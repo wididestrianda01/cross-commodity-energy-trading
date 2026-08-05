@@ -2,7 +2,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-SQL_DIR = Path(__file__).parent.parent.parent.parent / "sql"
+SQL_DIR = Path(__file__).resolve().parent.parent.parent / "sql"
 
 
 def get_connection(db_path: str = ":memory:") -> duckdb.DuckDBPyConnection:
