@@ -119,9 +119,9 @@ For the TTF-German power pair, the fitted ν is typically 4-6, producing tail de
 
 ### Portfolio VaR and component allocation
 
-Portfolio P&L is simulated by drawing 10,000 correlated samples from the fitted t-copula, mapping them to returns through the inverse normal CDF scaled by historical volatility:
+Portfolio PnL is simulated by drawing 10,000 correlated samples from the fitted t-copula, mapping them to returns through the inverse normal CDF scaled by historical volatility:
 
-$$\text{VaR}_\alpha = -Q_\alpha(\text{P&L}), \quad \text{ES}_\alpha = -\mathbb{E}[\text{P&L} \mid \text{P&L} \leq -\text{VaR}_\alpha]$$
+$$\text{VaR}_\alpha = -Q_\alpha(\text{PnL}), \quad \text{ES}_\alpha = -\mathbb{E}[\text{PnL} \mid \text{PnL} \leq -\text{VaR}_\alpha]$$
 
 Component VaR uses Euler allocation through finite-difference marginal contributions:
 
