@@ -10,6 +10,19 @@ def generate_synthetic_prices(
     end_date: str = "2025-12-31",
     seed: int = 42,
 ) -> pd.DataFrame:
+    """Generate correlated synthetic commodity prices via t-copula GBM.
+
+    Produces 9 correlated series using a pre-specified correlation matrix
+    and t-distributed innovations.
+
+    Args:
+        start_date: First business day of the series.
+        end_date: Last business day of the series.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        DataFrame with columns [date, commodity_key, price_native, price_eur_mwh, source].
+    """
     rng = np.random.default_rng(seed)
     dates = pd.date_range(start_date, end_date, freq="B")
     n = len(dates)

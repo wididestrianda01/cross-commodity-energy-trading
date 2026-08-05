@@ -1,5 +1,6 @@
 """Tests for DB schema, data pipeline, and normalizer."""
 
+import pytest
 import pandas as pd
 from energy_cross_commodity.data.normalizer import convert_to_eur_mwh, build_date_dimension
 
@@ -45,3 +46,15 @@ def test_build_date_dimension():
     dim = build_date_dimension("2024-01-01", "2024-01-10")
     assert len(dim) >= 5
     assert dim.iloc[0]["is_trading_day"] in (True, False)
+
+
+@pytest.mark.slow
+def test_fetch_yfinance_returns_dataframe():
+    """fetch_yfinance returns DataFrame with date + price columns."""
+    from energy_cross_commodity.data.fetcher import fetch_yfinance
+    df = fetch_yfinance("AAPL", start="2024-12-01", end="2024-12-10")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+    assert list(df.columns) == ["date", "price"]
+    assert pd.api.types.is_datetime64_any_dtype(df["date"])
+    assert pd.api.types.is_numeric_dtype(df["price"])

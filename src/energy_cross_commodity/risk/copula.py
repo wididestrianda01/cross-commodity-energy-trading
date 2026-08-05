@@ -14,6 +14,20 @@ class CopulaFit:
 
 
 def fit_t_copula(std_residuals: pd.DataFrame) -> CopulaFit:
+    """Fit a multivariate t-copula via pseudo-MLE on standardized residuals.
+
+    Marginal CDFs are estimated per column via univariate t fits, then the
+    copula degrees-of-freedom is optimised by maximum likelihood. Tail
+    dependence coefficients are computed analytically.
+
+    Args:
+        std_residuals: DataFrame of GARCH-standardised residuals,
+            one column per commodity.
+
+    Returns:
+        CopulaFit with correlation matrix, degrees of freedom, and tail
+        dependence matrix.
+    """
     n = len(std_residuals.columns)
     correlation = std_residuals.corr().values
 
@@ -27,7 +41,7 @@ def fit_t_copula(std_residuals: pd.DataFrame) -> CopulaFit:
     u = uniforms_clean.values
     n_obs, k = u.shape
 
-    def neg_loglik(nu):
+    def _neg_loglik(nu: float) -> float:
         if nu <= 2:
             return 1e10
         try:
@@ -38,7 +52,7 @@ def fit_t_copula(std_residuals: pd.DataFrame) -> CopulaFit:
         except Exception:
             return 1e10
 
-    result = optimize.minimize_scalar(neg_loglik, bounds=(2.1, 30), method="bounded")
+    result = optimize.minimize_scalar(_neg_loglik, bounds=(2.1, 30), method="bounded")
     df = float(result.x) if result.success else 5.0
 
     tail_dep = np.zeros((n, n))
@@ -54,6 +68,15 @@ def fit_t_copula(std_residuals: pd.DataFrame) -> CopulaFit:
 
 
 def simulate_t_copula(copula: CopulaFit, n: int = 10000) -> np.ndarray:
+    """Draw uniform samples from a fitted t-copula.
+
+    Args:
+        copula: Fitted copula with correlation matrix and df.
+        n: Number of draws (default 10,000).
+
+    Returns:
+        Array of shape (n, k) with uniform marginals in [0, 1].
+    """
     k = copula.correlation.shape[0]
     rng = np.random.default_rng(42)
     samples = stats.multivariate_t(

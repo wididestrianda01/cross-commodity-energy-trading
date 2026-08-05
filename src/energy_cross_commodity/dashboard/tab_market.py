@@ -1,6 +1,5 @@
 """Tab 1: Market Monitor — price heatmap, normalized chart, spread dashboard."""
 
-import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -10,6 +9,12 @@ from omegaconf import DictConfig
 
 
 def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
+    """Render Tab 1: price heatmap, normalized chart, and spread dashboard.
+
+    Args:
+        conn: Active DuckDB connection.
+        cfg: Pipeline configuration (OmegaConf DictConfig).
+    """
     prices = conn.execute("""
         SELECT date, commodity_key, price_eur_mwh
         FROM fact_prices

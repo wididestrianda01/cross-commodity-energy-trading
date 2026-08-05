@@ -33,6 +33,19 @@ poetry run streamlit run src/energy_cross_commodity/dashboard/app.py
 poetry run pytest tests/ -v
 ```
 
+## Dashboard
+
+| Market Monitor | Correlation Lab |
+|:---:|:---:|
+| ![Tab 1: Price heatmap, normalized chart, spread dashboard](docs/screenshots/tab1-market-monitor.webp) | ![Tab 2: Rolling correlation, tail dependence](docs/screenshots/tab2-correlation-lab.webp) |
+| *Last 20 days price heatmap + normalized index + spark/dark/crack spreads* | *Rolling 60-day correlation time series with crisis annotations. t-copula vs Gaussian tail contours.* |
+
+| Risk Command | Fuel Switch |
+|:---:|:---:|
+| ![Tab 3: Euler VaR waterfall, backtesting, scenario P&L](docs/screenshots/tab3-risk-command.webp) | ![Tab 4: Fuel-switching signal, carbon pass-through, break-even](docs/screenshots/tab4-fuel-switch.webp) |
+| *t-copula Euler component VaR + Kupiec backtest (4.9% breaches at 95% CI) + stress scenarios* | *CSS−CDS fuel-switching signal, rolling carbon pass-through β, break-even carbon vs EUA* |
+
+
 ## Modules
 
 | Module | Description |

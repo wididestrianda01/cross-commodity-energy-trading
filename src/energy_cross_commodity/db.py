@@ -6,10 +6,25 @@ SQL_DIR = Path(__file__).parent.parent.parent.parent / "sql"
 
 
 def get_connection(db_path: str = ":memory:") -> duckdb.DuckDBPyConnection:
+    """Open a DuckDB connection.
+
+    Args:
+        db_path: Path to the database file. Defaults to in-memory.
+
+    Returns:
+        A DuckDB connection handle.
+    """
     return duckdb.connect(db_path)
 
 
 def init_db(conn: duckdb.DuckDBPyConnection) -> None:
+    """Create the database schema (dimension and fact tables) if not present.
+
+    Creates dim_commodity, dim_date, and fact_prices tables.
+
+    Args:
+        conn: An active DuckDB connection.
+    """
     conn.execute("""
         CREATE TABLE IF NOT EXISTS dim_commodity (
             commodity_key VARCHAR(10) PRIMARY KEY,
@@ -41,9 +56,24 @@ def init_db(conn: duckdb.DuckDBPyConnection) -> None:
             FOREIGN KEY (commodity_key) REFERENCES dim_commodity(commodity_key)
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS var_backtest (
+            date DATE PRIMARY KEY,
+            pnl DOUBLE NOT NULL,
+            var_estimate DOUBLE NOT NULL
+        )
+    """)
 
 
 def seed_commodities(conn: duckdb.DuckDBPyConnection) -> None:
+    """Insert the standard commodity universe into dim_commodity.
+
+    Covers Brent crude, TTF gas, EUA carbon, European power, Nord Pool,
+    API2 coal, RBOB gasoline, ICE gasoil, and EUR/USD FX.
+
+    Args:
+        conn: An active DuckDB connection with dim_commodity already created.
+    """
     commodities = [
         ("BRENT", "Brent Crude", "crude", "USD/bbl", 1.628, "yfinance"),
         ("TTF", "TTF Natural Gas", "gas", "EUR/MWh", 1.0, "yfinance"),
@@ -66,6 +96,16 @@ def query(
     sql_file: str,
     params: dict | None = None,
 ) -> pd.DataFrame:
+    """Execute a named SQL file against DuckDB and return the result as a DataFrame.
+
+    Args:
+        conn: An active DuckDB connection.
+        sql_file: Filename of the SQL template in the sql/ directory.
+        params: Optional key-value pairs for template substitution ({key} -> value).
+
+    Returns:
+        DataFrame with the query results.
+    """
     path = SQL_DIR / sql_file
     sql = path.read_text()
     if params:

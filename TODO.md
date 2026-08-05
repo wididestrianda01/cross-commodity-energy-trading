@@ -1,0 +1,5 @@
+- README should show screenshot from the app for each feature
+- MUST use real data
+- Should be suitable for targeting https://www.equinor.com/careers/finance-and-trading
+- Notebooks should be used for 2 objectives: 1. My learning refernce for this area, so it should have enough depth explanation about methodology, underlying theory, and regulation applied; 2. Should show case my capability to recruiter and become my differentiator
+- MUST use all current industry standard and practice, don´t bother use outdated methodology or tools

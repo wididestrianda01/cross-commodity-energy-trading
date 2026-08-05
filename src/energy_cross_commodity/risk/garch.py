@@ -20,6 +20,18 @@ def fit_univariate_garch(
     q: int = 1,
     dist: str = "t",
 ) -> GARCHResult:
+    """Fit a univariate GARCH(p,q) model with Student-t errors.
+
+    Args:
+        returns: Time series of log returns.
+        p: GARCH lag order.
+        q: ARCH lag order.
+        dist: Error distribution ("t", "normal", "skewt").
+
+    Returns:
+        GARCHResult with fitted parameters, conditional volatility,
+        standardised residuals, and degrees of freedom.
+    """
     returns_clean = returns.dropna()
     model = arch_model(returns_clean, mean="constant", vol="GARCH", p=p, q=q, dist=dist)
     result = model.fit(disp="off")
