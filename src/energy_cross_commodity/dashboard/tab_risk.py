@@ -1,7 +1,6 @@
 """Tab 3: Risk Command — VaR waterfall, breaches, scenario P&L."""
 
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import duckdb
@@ -10,6 +9,12 @@ from energy_cross_commodity.risk.scenarios import SCENARIOS, run_scenario
 
 
 def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
+    """Render Tab 3: VaR waterfall, scenario P&L breakdown.
+
+    Args:
+        conn: Active DuckDB connection.
+        cfg: Pipeline configuration (OmegaConf DictConfig).
+    """
     prices = conn.execute("""
         SELECT date, commodity_key, price_native
         FROM fact_prices WHERE date >= '2019-01-01'
@@ -50,7 +55,6 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 
     items = list(result.pnl_by_position.keys())
     values = list(result.pnl_by_position.values())
-    colors = ["#2E7D6F" if v > 0 else "#C44536" for v in values]
 
     fig2 = go.Figure(go.Waterfall(
         name="Scenario P&L", orientation="v",

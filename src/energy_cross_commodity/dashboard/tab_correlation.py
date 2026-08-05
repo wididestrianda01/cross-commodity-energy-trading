@@ -1,10 +1,8 @@
 """Tab 2: Correlation Lab — rolling correlation, DCC overlay, tail dependence."""
 
 import numpy as np
-import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
 import duckdb
 from omegaconf import DictConfig
@@ -12,6 +10,12 @@ from scipy import stats
 
 
 def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
+    """Render Tab 2: rolling correlation, DCC overlay, and tail dependence.
+
+    Args:
+        conn: Active DuckDB connection.
+        cfg: Pipeline configuration (OmegaConf DictConfig).
+    """
     prices = conn.execute("""
         SELECT date, commodity_key, price_native
         FROM fact_prices

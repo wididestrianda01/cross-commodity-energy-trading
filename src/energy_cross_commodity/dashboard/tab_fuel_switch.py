@@ -1,9 +1,6 @@
 """Tab 4: Fuel Switch — merit order, fuel-switching signal, carbon pass-through."""
 
-import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
 import duckdb
 from omegaconf import DictConfig
@@ -11,6 +8,12 @@ from energy_cross_commodity.db import query
 
 
 def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
+    """Render Tab 4: fuel-switching signal, merit order, carbon pass-through.
+
+    Args:
+        conn: Active DuckDB connection.
+        cfg: Pipeline configuration (OmegaConf DictConfig).
+    """
     spreads_df = query(conn, "spread_economics.sql", {
         "efficiency_gas": "0.55", "ef_gas": "0.37",
         "efficiency_coal": "0.38", "ef_coal": "0.90",

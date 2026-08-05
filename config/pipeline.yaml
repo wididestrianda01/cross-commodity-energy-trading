@@ -9,7 +9,7 @@ commodities:
     source: "yfinance"
     mwh_per_unit: 1.628
   TTF:
-    ticker: null
+    ticker: "TTF=F"
     source: "yfinance"
     mwh_per_unit: 1.0
   EUA:
@@ -18,24 +18,24 @@ commodities:
     mwh_per_unit: null
   DE_POWER:
     ticker: null
+    bidding_zone: "DE_LU"
     source: "entsoe"
-    bidding_zone: "10YDE-VE-------2"
     mwh_per_unit: 1.0
   NP_SYS:
     ticker: null
+    bidding_zone: "NO_1"
     source: "entsoe"
-    bidding_zone: "10YNO-0--------C"
     mwh_per_unit: 1.0
   RBOB:
     ticker: "RB=F"
     source: "yfinance"
     mwh_per_unit: null
   GASOIL:
-    ticker: null
+    ticker: "GOC=F"
     source: "yfinance"
     mwh_per_unit: null
   API2:
-    ticker: null
+    ticker: "MTF=F"
     source: "yfinance"
     mwh_per_unit: 8.14
   EURUSD:

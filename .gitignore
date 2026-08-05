@@ -12,9 +12,11 @@ venv/
 *.db
 *.db.wal
 
+
+# carbon-ets cache directory
+.carbon_cache/
 # Local planning artifacts — never push
-docs/superpowers/specs/
-docs/superpowers/plans/
+docs/superpowers/
 .context/
 CLAUDE.md
 *.local.md

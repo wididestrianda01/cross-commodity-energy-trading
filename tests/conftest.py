@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from energy_cross_commodity.db import init_db, seed_commodities, get_connection
+from energy_cross_commodity.db import init_db, seed_commodities
 
 
 @pytest.fixture

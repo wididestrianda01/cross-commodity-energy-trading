@@ -20,6 +20,9 @@ omegaconf = "^2.3"
 yfinance = "^0.2"
 python-dotenv = "^1.0"
 xarray = "^2026.7.0"
+statsmodels = "^0.14"
+entsoe-py = "^0.8"
+carbon-ets = "^0.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"
