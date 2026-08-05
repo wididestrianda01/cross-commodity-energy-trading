@@ -37,7 +37,10 @@ def test_backtest_rows_insertable():
     returns = pd.DataFrame({
         "X": rng.standard_normal(n) * 0.02,
     }, index=dates)
-    result = compute_rolling_var(returns, {"X": 1_000_000}, window=60, copula_fit_fn=fit_t_copula)
+    # Single-asset book: no dependence structure, so no copula.
+    result = compute_rolling_var(
+        returns, {"X": 1_000_000}, window=60, copula_fit_fn=lambda _w: None
+    )
 
     conn = duckdb.connect(":memory:")
     init_db(conn)

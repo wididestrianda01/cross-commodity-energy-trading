@@ -21,7 +21,7 @@ commodities:
     bidding_zone: "DE_LU"
     source: "entsoe"
     mwh_per_unit: 1.0
-  NP_SYS:
+  NO1_POWER:
     ticker: null
     bidding_zone: "NO_1"
     source: "entsoe"
@@ -37,7 +37,10 @@ commodities:
   API2:
     ticker: "MTF=F"
     source: "yfinance"
-    mwh_per_unit: 8.14
+    # API2 CIF ARA is quoted against a 6,000 kcal/kg NAR specification:
+    # 6,000 kcal/kg = 6.978 MWh/tonne. (8.141 MWh/t would be tonne-of-coal-
+    # equivalent at 7,000 kcal/kg, which is not the API2 contract spec.)
+    mwh_per_unit: 6.978
   EURUSD:
     ticker: "EURUSD=X"
     source: "yfinance"
@@ -52,6 +55,10 @@ spreads:
     emission_factor: 0.90
   crack:
     ratio: [2, 1, 3]
+    # Legs are quoted in different units and must be converted to USD/bbl
+    # before the 2:1:3 ratio is applied.
+    rbob_gal_per_bbl: 42.0        # RBOB USD/gal x 42 -> USD/bbl
+    gasoil_bbl_per_tonne: 7.45    # ICE Gasoil USD/tonne / 7.45 -> USD/bbl
 
 risk:
   confidence: [0.95, 0.99]

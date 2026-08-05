@@ -45,12 +45,29 @@ def test_dark_spread_hand_calculation():
 
 
 def test_321_crack_spread():
-    """(2*100 + 200 - 3*80) / 3 = (200+200-240)/3 = 53.33"""
-    rbob = np.array([100.0])
-    gasoil = np.array([200.0])
-    brent = np.array([80.0])
+    """Legs must be converted to USD/bbl before the 2:1:3 ratio is applied.
+
+    RBOB 2.10 USD/gal * 42          = 88.200 USD/bbl
+    Gasoil 750 USD/tonne / 7.45     = 100.671 USD/bbl
+    (2*88.200 + 100.671 - 3*82) / 3 = 10.357 USD/bbl
+    """
+    rbob = np.array([2.10])
+    gasoil = np.array([750.0])
+    brent = np.array([82.0])
     result = compute_321_crack(rbob, gasoil, brent)
-    assert abs(result[0] - 53.33) < 0.1
+    assert abs(result[0] - 10.357) < 0.01
+
+
+def test_321_crack_rejects_raw_unit_arithmetic():
+    """A crack spread built from unconverted quotes is off by orders of magnitude.
+
+    Guards the specific regression of summing USD/gal, USD/tonne and
+    USD/bbl directly, which yields a plausible-looking but meaningless
+    number rather than an obvious error.
+    """
+    rbob, gasoil, brent = np.array([2.10]), np.array([750.0]), np.array([82.0])
+    naive = (2.0 * rbob + gasoil - 3.0 * brent) / 3.0
+    assert abs(compute_321_crack(rbob, gasoil, brent)[0] - naive[0]) > 150.0
 
 
 def test_fuel_switch_gas_favored():

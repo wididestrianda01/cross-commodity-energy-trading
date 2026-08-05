@@ -17,8 +17,8 @@ def test_single_asset_var_positive():
     n = 1000
     r = rng.standard_normal(n) * 0.02
     rets = pd.DataFrame({"X": r})
-    copula = fit_t_copula(rets)
-    result = compute_portfolio_var(rets, {"X": 1_000_000}, copula, confidence=[0.95])
+    # A one-dimensional copula carries no dependence information.
+    result = compute_portfolio_var(rets, {"X": 1_000_000}, None, confidence=[0.95])
     assert result.var_99 > result.var_95
     assert result.es_975 >= result.var_95
 
@@ -70,9 +70,13 @@ def test_rolling_var_output():
         {"X": rng.standard_normal(n) * 0.02}, index=dates
     )
     positions = {"X": 1_000_000}
-    result = compute_rolling_var(rets, positions, window=100, copula_fit_fn=fit_t_copula)
+    result = compute_rolling_var(
+        rets, positions, window=100, copula_fit_fn=lambda _w: None
+    )
     assert list(result.columns) == ["date", "var_95", "var_99", "realized_pnl"]
-    assert len(result) == n - 100 + 1
+    # One row per window that has a *following* day to be scored against,
+    # so the series is one shorter than the number of windows.
+    assert len(result) == n - 100
 
 
 def test_scenario_pnl_matches_hand_calc():

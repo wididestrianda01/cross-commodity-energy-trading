@@ -25,11 +25,33 @@ def test_convert_brent_to_eur_mwh():
         "date": pd.date_range("2024-01-01", periods=3, freq="B"),
         "price": [80.0, 82.0, 81.0],
     })
-    eurusd = pd.Series([0.92, 0.92, 0.92], index=df["date"])
+    # EURUSD=X quotes USD per EUR, so a USD price is divided by it.
+    eurusd = pd.Series([1.09, 1.09, 1.09], index=df["date"])
     result = convert_to_eur_mwh(df, "BRENT", 1.628, eurusd)
-    expected = 80.0 * 0.92 / 1.628
+    expected = 80.0 / 1.09 / 1.628
     assert abs(result.iloc[0]["price_eur_mwh"] - expected) < 0.01
     assert result.iloc[0]["price_native"] == 80.0
+
+
+def test_convert_uses_usd_per_eur_convention():
+    """A stronger dollar must lower, not raise, the EUR-denominated price.
+
+    Guards the direction of the FX division. The two conventions differ by
+    only ~18% at typical rates, so a single-rate equality test passes under
+    either one; only the *sign of the response* to an FX move separates them.
+    """
+    df = pd.DataFrame({
+        "date": pd.date_range("2024-01-01", periods=2, freq="B"),
+        "price": [80.0, 80.0],
+    })
+    dates = df["date"]
+    weak_dollar = convert_to_eur_mwh(
+        df, "BRENT", 1.628, pd.Series([1.20, 1.20], index=dates)
+    )
+    strong_dollar = convert_to_eur_mwh(
+        df, "BRENT", 1.628, pd.Series([1.00, 1.00], index=dates)
+    )
+    assert strong_dollar.iloc[0]["price_eur_mwh"] > weak_dollar.iloc[0]["price_eur_mwh"]
 
 
 def test_convert_power_no_conversion():

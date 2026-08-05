@@ -26,7 +26,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 
     # --- Rolling Correlation Time Series ---
     st.subheader("Rolling 60-Day Correlation: TTF vs. German Power")
-    avail = [c for c in ["TTF", "DE_POWER", "BRENT", "EUA", "NP_SYS"] if c in commodities]
+    avail = [c for c in ["TTF", "DE_POWER", "BRENT", "EUA", "NO1_POWER"] if c in commodities]
     filtered = returns[avail]
     corr_cube = compute_rolling_correlation(filtered, window=60)
 

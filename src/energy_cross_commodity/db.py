@@ -79,11 +79,11 @@ def seed_commodities(conn: duckdb.DuckDBPyConnection) -> None:
         ("TTF", "TTF Natural Gas", "gas", "EUR/MWh", 1.0, "yfinance"),
         ("EUA", "EUA Carbon Allowance", "carbon", "EUR/tCO2", None, "carbon_ets"),
         ("DE_POWER", "German Baseload Power", "power", "EUR/MWh", 1.0, "entsoe"),
-        ("NP_SYS", "Nord Pool System Price", "power", "EUR/MWh", 1.0, "entsoe"),
-        ("API2", "API2 Rotterdam Coal", "coal", "USD/tonne", 8.14, "yfinance"),
+        ("NO1_POWER", "Nordic Power NO1 (Oslo)", "power", "EUR/MWh", 1.0, "entsoe"),
+        ("API2", "API2 Rotterdam Coal", "coal", "USD/tonne", 6.978, "yfinance"),
         ("RBOB", "RBOB Gasoline", "product", "USD/gal", None, "yfinance"),
         ("GASOIL", "ICE Gasoil", "product", "USD/tonne", None, "yfinance"),
-        ("EURUSD", "EUR/USD FX", "fx", "EUR per USD", None, "yfinance"),
+        ("EURUSD", "EUR/USD FX", "fx", "USD per EUR", None, "yfinance"),
     ]
     conn.executemany(
         "INSERT OR REPLACE INTO dim_commodity VALUES (?, ?, ?, ?, ?, ?)",
