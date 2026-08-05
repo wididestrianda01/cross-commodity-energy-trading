@@ -82,7 +82,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     ))
     fig.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
         title="Euler Component VaR (t-Copula Simulation, 10K draws)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     col1, col2, col3 = st.columns(3)
     col1.metric("VaR 95% (1-day)", f"€{var_result['var_95']:,.0f}",
@@ -127,7 +127,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             yaxis_title="P&L (EUR)", xaxis_title="",
             showlegend=True, legend=dict(orientation="h", yanchor="top", y=-0.15),
         )
-        st.plotly_chart(fig_bt, use_container_width=True)
+        st.plotly_chart(fig_bt, width="stretch")
 
         from energy_cross_commodity.risk.var_engine import kupiec_test
         breaches = int(bt_df["breach"].sum())
@@ -164,7 +164,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     ))
     fig2.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
         title=f"{scenario.name}: Net P&L = €{result.total_pnl:,.0f}")
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width="stretch")
     st.caption(scenario.description)
 
     st.subheader("Portfolio P&L Trajectory")
@@ -187,11 +187,11 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         ("2022-08-15", "Gas Crisis", "#C44536"),
         ("2024-01-01", "Recovery", "#2E7D6F"),
     ]:
-        fig_pnl.add_vline(x=evt_date, line_dash="dot", line_color=color,
+        fig_pnl.add_vline(x=pd.Timestamp(evt_date), line_dash="dot", line_color=color,
             annotation_text=label, annotation_position="top left")
     fig_pnl.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10),
         yaxis_title="Cumulative P&L (EUR)")
-    st.plotly_chart(fig_pnl, use_container_width=True)
+    st.plotly_chart(fig_pnl, width="stretch")
 
     total_ret = float(cum_pnl.values[-1])
     daily_vals = daily_pnl.dropna()

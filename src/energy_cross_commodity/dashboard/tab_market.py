@@ -24,7 +24,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 
     st.subheader("Price Heatmap — Daily Returns")
     pivot = prices.pivot(index="commodity_key", columns="date", values="price_eur_mwh")
-    returns = pivot.pct_change().iloc[:, -20:]
+    returns = pivot.pct_change(fill_method=None).iloc[:, -20:]
 
     fig = px.imshow(
         returns,
@@ -33,7 +33,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         aspect="auto",
     )
     fig.update_layout(height=200, margin=dict(l=10, r=10, t=10, b=10), coloraxis_showscale=False)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.subheader("Normalized Price Chart (Index = 100 at 2022-01-01)")
     norm = pivot.div(pivot.iloc[:, 0], axis=0) * 100
@@ -43,7 +43,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         legend=dict(orientation="h", yanchor="top", y=-0.15),
         yaxis_title="Index (100 = Jan 2022)",
     )
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width="stretch")
 
     st.subheader("Spark / Dark / Crack Spread Dashboard")
     from energy_cross_commodity.db import query
@@ -60,4 +60,4 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     fig3.add_trace(go.Bar(x=spreads_df["date"], y=positive, name="Gas Favored", marker_color="#2E7D6F"), row=1, col=3)
     fig3.add_trace(go.Bar(x=spreads_df["date"], y=negative, name="Coal Favored", marker_color="#C44536"), row=1, col=3)
     fig3.update_layout(height=350, showlegend=False, margin=dict(l=10, r=10, t=30, b=10))
-    st.plotly_chart(fig3, use_container_width=True)
+    st.plotly_chart(fig3, width="stretch")

@@ -49,14 +49,14 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             ("2022-08-15", "Gas Crisis", "#C44536"),
             ("2023-06-01", "Normalization", "#2E7D6F"),
         ]:
-            fig_ts.add_vline(x=event_date, line_dash="dot", line_color=color,
+            fig_ts.add_vline(x=pd.Timestamp(event_date), line_dash="dot", line_color=color,
                 annotation_text=label, annotation_position="top left")
         fig_ts.update_layout(
             height=300, margin=dict(l=10, r=10, t=10, b=10),
             yaxis_title="Correlation", xaxis_title="",
             yaxis=dict(range=[-1, 1]),
         )
-        st.plotly_chart(fig_ts, use_container_width=True)
+        st.plotly_chart(fig_ts, width="stretch")
         st.caption("Correlation spikes in crises. Aug 2022: TTF-power correlation hit ~0.9. By 2023, decoupling from renewables pushed it back toward ~0.3.")
 
     # --- Interactive Date Picker + Correlation Matrix ---
@@ -79,7 +79,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             color_continuous_midpoint=0, zmin=-1, zmax=1,
         )
         fig_mat.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_mat, use_container_width=True)
+        st.plotly_chart(fig_mat, width="stretch")
         st.caption(f"60-day correlation as of {picked}")
 
     # --- Tail Dependence Scatter ---
@@ -118,7 +118,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             height=400, margin=dict(l=10, r=10, t=10, b=10),
             xaxis_title="TTF (standardized)", yaxis_title="German Power (standardized)",
         )
-        st.plotly_chart(fig_tail, use_container_width=True)
+        st.plotly_chart(fig_tail, width="stretch")
         st.caption(f"Correlation: {rho:.3f}. The t-copula ellipse (solid navy) captures tail dependence the Gaussian ellipse (dashed red) misses.")
     st.subheader("Correlation Regime Detection")
     if len(avail) >= 3:
@@ -150,7 +150,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         fig_frob.update_layout(height=300, margin=dict(l=10,r=10,t=10,b=10),
             yaxis_title="Frobenius Norm", showlegend=True,
             legend=dict(orientation="h", yanchor="top", y=-0.15))
-        st.plotly_chart(fig_frob, use_container_width=True)
+        st.plotly_chart(fig_frob, width="stretch")
 
         rc1, rc2 = st.columns(2)
         rc1.metric("Current Regime", current_regime)

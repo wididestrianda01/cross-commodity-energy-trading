@@ -33,7 +33,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 
     fig.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10),
         yaxis_title="EUR/MWh", xaxis_title="")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     col1, col2, col3 = st.columns(3)
     gas_days = (signal > 5).sum()
@@ -74,7 +74,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         fig_pt.add_hline(y=0, line_dash="dash", line_color="#6B6B6B", line_width=0.5)
         fig_pt.update_layout(height=300, margin=dict(l=10,r=10,t=10,b=10),
             yaxis_title="β (power sensitivity to carbon)")
-        st.plotly_chart(fig_pt, use_container_width=True)
+        st.plotly_chart(fig_pt, width="stretch")
 
         current_beta = betas[valid][-1] if valid.any() else np.nan
         st.caption(
@@ -122,7 +122,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             line=dict(color="#6B6B6B", width=0.8), name="Residual"), row=3, col=1)
         fig_seas.add_hline(y=0, line_dash="dash", line_color="#6B6B6B", line_width=0.5, row=3, col=1)
         fig_seas.update_layout(height=500, margin=dict(l=10,r=10,t=30,b=10), showlegend=False)
-        st.plotly_chart(fig_seas, use_container_width=True)
+        st.plotly_chart(fig_seas, width="stretch")
         st.caption(
             "STL decomposition of the 3-2-1 crack spread. "
             "The seasonal component captures predictable annual patterns — summer gasoline demand, winter heating oil. "
@@ -159,7 +159,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 
         fig_be.update_layout(height=350, margin=dict(l=10,r=10,t=10,b=10),
             yaxis_title="EUR/tCO2", legend=dict(orientation="h", yanchor="top", y=-0.15))
-        st.plotly_chart(fig_be, use_container_width=True)
+        st.plotly_chart(fig_be, width="stretch")
 
         current_be = float(be_carbon[-1]) if len(be_carbon) > 0 else np.nan
         current_eua = float(be_df["carbon"].values[-1]) if len(be_df) > 0 else np.nan
