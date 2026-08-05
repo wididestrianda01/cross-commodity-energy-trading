@@ -120,3 +120,43 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         )
         st.plotly_chart(fig_tail, use_container_width=True)
         st.caption(f"Correlation: {rho:.3f}. The t-copula ellipse (solid navy) captures tail dependence the Gaussian ellipse (dashed red) misses.")
+    st.subheader("Correlation Regime Detection")
+    if len(avail) >= 3:
+        frob = np.zeros(corr_cube.shape[2])
+        for t_idx in range(corr_cube.shape[2]):
+            mat = corr_cube.values[:, :, t_idx]
+            frob[t_idx] = np.sqrt(np.sum(mat**2))
+        frob_dates = pd.DatetimeIndex(corr_cube.coords["date"].values)
+
+        lo = np.percentile(frob, 33)
+        hi = np.percentile(frob, 67)
+        regime = np.where(frob > hi, "HIGH", np.where(frob < lo, "LOW", "NORMAL"))
+        current_regime = regime[-1]
+
+        fig_frob = go.Figure()
+        fig_frob.add_trace(go.Scatter(x=frob_dates, y=frob, mode="lines",
+            line=dict(color="#00003C", width=1.5), name="Frobenius Norm"))
+        for r, color in [("HIGH", "#C44536"), ("NORMAL", "#6B6B6B"), ("LOW", "#2E7D6F")]:
+            mask = regime == r
+            if mask.any():
+                fig_frob.add_trace(go.Scatter(
+                    x=frob_dates[mask], y=frob[mask], mode="markers",
+                    marker=dict(size=2, color=color, opacity=0.5), name=r, showlegend=True,
+                ))
+        fig_frob.add_hline(y=hi, line_dash="dash", line_color="#C44536", line_width=0.5,
+            annotation_text=f"HIGH threshold ({hi:.1f})")
+        fig_frob.add_hline(y=lo, line_dash="dash", line_color="#2E7D6F", line_width=0.5,
+            annotation_text=f"LOW threshold ({lo:.1f})")
+        fig_frob.update_layout(height=300, margin=dict(l=10,r=10,t=10,b=10),
+            yaxis_title="Frobenius Norm", showlegend=True,
+            legend=dict(orientation="h", yanchor="top", y=-0.15))
+        st.plotly_chart(fig_frob, use_container_width=True)
+
+        rc1, rc2 = st.columns(2)
+        rc1.metric("Current Regime", current_regime)
+        rc2.metric("Frobenius Norm", f"{frob[-1]:.2f}")
+        st.caption(
+            "Frobenius norm of the N×N correlation matrix. "
+            "HIGH regimes coincide with crises — diversification fails when you need it most. "
+            f"Aug 2022 classified as HIGH (norm > {hi:.1f})."
+        )
