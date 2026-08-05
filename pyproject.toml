@@ -3,6 +3,7 @@ name = "energy-cross-commodity"
 version = "0.1.0"
 description = "Cross-commodity energy trading analytics platform"
 authors = ["wididestrianda01"]
+license = "MIT"
 readme = "README.md"
 packages = [{include = "energy_cross_commodity", from = "src"}]
 
