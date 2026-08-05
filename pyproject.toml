@@ -29,7 +29,7 @@ pytest = "^8.3"
 pytest-cov = "^5.0"
 ruff = "^0.5"
 nbformat = "^5.10.4"
-weasyprint = "^69.0"
+nbconvert = {extras = ["webpdf"], version = "^7.17.1"}
 
 [build-system]
 requires = ["poetry-core"]
