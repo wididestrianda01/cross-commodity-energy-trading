@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# DuckDB data (large binary; generated from pipeline)
+*.db
+*.db.wal
+
+# Local planning artifacts — never push
+docs/superpowers/specs/
+docs/superpowers/plans/
+.context/
+CLAUDE.md
+*.local.md
+local/
+
+# Environment / secrets
+.env
+.env.local
+*.secret
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Notebook outputs (optional — commit clean notebooks without cell outputs)
+.ipynb_checkpoints/
+
+# Poetry lock (optional — commit if you want reproducible envs)
+# poetry.lock
