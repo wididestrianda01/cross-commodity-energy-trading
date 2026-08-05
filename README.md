@@ -47,6 +47,20 @@ DuckDB serves as the sole data store. All analytics modules read from it through
 | ![Risk Command: Euler VaR waterfall, backtesting, scenario P&L, portfolio trajectory](docs/screenshots/tab3-risk-command.png) | ![Fuel Switch: signal, carbon pass-through, seasonal decomposition, break-even carbon](docs/screenshots/tab4-fuel-switch.png) |
 | *Euler-allocated component VaR from 10,000 t-copula draws. P&L backtest with VaR 95% band and breach markers (1,210 days, 59 breaches, Kupiec p = 0.843). Stress scenario P&L waterfall. Cumulative portfolio P&L trajectory with Sharpe ratio and maximum drawdown.* | *Fuel-switching signal (CSS − CDS) with gas/coal/zone bands and regime-day counts. Rolling 60-day carbon pass-through beta with 0.80-1.00 reference band. STL seasonal decomposition of the 3-2-1 crack spread. Break-even carbon price versus actual EUA with gas-favored and coal-favored shading.* |
 
+
+## Notebooks — Deep-Dive Analytics
+
+Four Jupyter notebooks provide the theoretical foundation, regulatory context, and detailed methodology behind each dashboard view. Each notebook is self-contained: it can be read standalone or as part of the progressive narrative from market data through spreads, correlations, and portfolio risk. All notebooks include executive summaries, formal derivations, academic citations, and references to the relevant EU regulations (REMIT II, MiFID II, EMIR, EU ETS Directive).
+
+| # | Notebook | Covers | PDF |
+|---|----------|--------|-----|
+| 1 | **Market Landscape** | Market microstructure (trading venues, Equinor's desk exposure), data pipeline, summary statistics with Jarque-Bera normality tests, normalised price paths, log-return distributions with normal overlays, rolling volatility regimes, ADF stationarity tests | [PDF](docs/notebooks/01_market_landscape.pdf) |
+| 2 | **Spread Economics** | EU ETS cap-and-trade primer (Phase IV, MSR, CBAM), clean spark spread with regime classification, clean dark spread with carbon cost decomposition, 3-2-1 crack spread with STL seasonal decomposition, fuel-switching signal and merit-order economics, thermal efficiency sensitivity analysis | [PDF](docs/notebooks/02_spread_economics.pdf) |
+| 3 | **Correlation & Regime Shifts** | 2022 gas crisis timeline, unconditional vs rolling correlation, DCC-GARCH formal specification (Engle 2002), pre/post-invasion correlation matrices, t-copula tail dependence with Sklar's theorem derivation, t-copula vs Gaussian 95% confidence contours | [PDF](docs/notebooks/03_correlation_crisis.pdf) |
+| 4 | **Portfolio Risk** | EMIR/Basel FRTB regulatory capital framework, t-copula Monte Carlo VaR and Expected Shortfall, Euler-allocated component VaR, rolling backtest with Kupiec and Christoffersen tests, stress scenario P&L waterfalls, model risk and limitations | [PDF](docs/notebooks/04_portfolio_risk.pdf) |
+
+To generate PDFs: `bash notebooks/export_pdfs.sh` (requires `weasyprint`).
+
 ## Spread Economics
 
 ### Clean spark spread (gas-to-power)
