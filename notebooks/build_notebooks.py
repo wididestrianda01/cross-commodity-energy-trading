@@ -6,7 +6,7 @@ Each notebook is self-contained with:
 - Deep methodology with LaTeX derivations
 - Regulatory context (REMIT, MiFID II, EMIR, EU ETS)
 - Academic citations
-- Equinor-specific framing
+- Commercial framing for an energy trading desk
 - Key findings
 - References section
 - PDF export cell
@@ -102,9 +102,9 @@ carbon trend upward through the sample, while gas and coal spend much of the
 period below their starting levels — the energy transition is visible in the
 data.
 
-For a trading desk at Equinor, these patterns are not academic. The MMP
-(Marketing, Midstream & Processing) division manages crude, gas, and power
-books whose risk is driven by exactly these volatility and tail-risk
+For a commercial trading desk these patterns are not academic. An integrated
+energy trading book spans crude, gas, and power, and its risk is driven by
+exactly these volatility and tail-risk
 characteristics. Understanding the distribution of each commodity is the
 necessary first step before constructing spreads, modelling correlations, or
 measuring portfolio risk — the subjects of Notebooks 2 through 4.
@@ -133,18 +133,17 @@ into prices.
 | Gasoil | ICE Gasoil | ICE Futures Europe | Futures | USD/tonne |
 | FX | EUR/USD | CME / OTC | Futures, spot | — |
 
-### Equinor's Exposure
+### How Desks Map onto These Instruments
 
-Equinor's MMP trading desks map onto these instruments directly. The **Crude,
-Products & Liquids (CPL)** desk trades Brent-linked crudes and refined
-products, managing the crack spread — the margin between crude input and
-product output — at the Mongstad refinery. The **Gas & Power (G&P)** desk
-trades TTF, NBP, and European power, managing spark and dark spreads as
-gas-fired and coal-fired generation competes in the merit order. The **Carbon
-desk** manages EUA positions for compliance and trading, with exposure to the
-EU ETS allowance price. **Danske Commodities**, Equinor's wholly-owned trading
-arm in Aarhus, operates across 40 power and gas markets with a technology-
-driven approach.
+A typical integrated energy trading floor is organised into books that map
+onto these instruments directly. A **crude and refined products** desk trades
+Brent-linked grades and product futures, managing the crack spread — the
+margin between crude input and product output — against a refining position. A
+**gas and power** desk trades TTF, NBP, and European power, managing spark and
+dark spreads as gas-fired and coal-fired generation compete in the merit
+order. A **carbon** desk manages EUA positions for both compliance surrender
+and trading, with direct exposure to the EU ETS allowance price. The panel
+assembled here is deliberately chosen to span all three.
 
 ### Regulatory Data Context
 
@@ -165,14 +164,24 @@ The dataset is assembled from three sources into a DuckDB star schema.
 - **carbon-ets**: EUA auction clearing prices from EEX primary market reports (2020–2026)
 
 All prices are normalised to EUR/MWh using standard conversion factors: Brent
-at 1.628 MWh/bbl, API2 coal at 8.141 MWh/tonne, RBOB at 1.278 MWh/gallon
-(approximate), and ICE Gasoil at 1.310 MWh/tonne. The DuckDB `fact_prices` table
+at 1.628 MWh/bbl and API2 coal at 6.978 MWh/tonne. The coal factor is worth
+stating explicitly: API2 is CIF ARA coal specified at 6,000 kcal/kg NAR, which
+gives 6.978 MWh/tonne. The 8.141 MWh/tonne figure that circulates widely
+belongs to a tonne of coal equivalent at 7,000 kcal/kg — a different contract
+specification, and using it would overstate coal's energy content by 17%,
+flattering the dark spread throughout.
+
+USD-quoted series are converted through EUR/USD before the energy conversion.
+The `EURUSD=X` quote is USD per one EUR, so a USD price is *divided* by it.
+Refined products stay in USD/bbl for the crack spread rather than going to
+EUR/MWh: RBOB is converted from USD/gallon at 42 gallons per barrel, and ICE
+Gasoil from USD/tonne at 7.45 barrels per tonne. The DuckDB `fact_prices` table
 holds the normalised panel.
 
 The pipeline runs idempotently: each fetch checks the latest date in the
 database and appends only new observations. Configuration is managed through
-Hydra (`config/pipeline.yaml`), following the same pattern Equinor uses with
-Databricks Unity Catalog and Azure Data Factory for pipeline orchestration.
+Hydra (`config/pipeline.yaml`), so that unit conversions, tickers, and date
+ranges live in version-controlled configuration rather than in notebook cells.
 """))
 
 NB1.append(code(COMMON_IMPORTS + """
@@ -187,7 +196,7 @@ prices = conn.execute('''
 wide = prices.pivot(index='date', columns='commodity_key', values='price_eur_mwh')
 comm_names = {
     'BRENT': 'Brent Crude', 'TTF': 'TTF Gas', 'EUA': 'EUA Carbon',
-    'DE_POWER': 'DE Baseload', 'NP_SYS': 'Nord Pool', 'API2': 'API2 Coal',
+    'DE_POWER': 'DE Baseload', 'NO1_POWER': 'Nordic NO1', 'API2': 'API2 Coal',
     'RBOB': 'RBOB Gasoline', 'GASOIL': 'ICE Gasoil', 'EURUSD': 'EUR/USD'
 }
 
@@ -558,11 +567,11 @@ spark and dark spreads — measures whether gas or coal is the cheaper marginal
 fuel. When this signal crosses zero, the entire merit order re-stacks,
 changing which fuel sets the power price.
 
-For Equinor, these spreads map to specific business activities. The Gas &
-Power desk manages spark and dark spread exposure through physical generation
-and financial hedging. The Crude, Products & Liquids desk manages the crack
-spread at the Mongstad refinery. The Carbon desk manages EUA positions that
-flow through every spread calculation. A trading strategy that ignored these
+Each spread maps to a specific commercial activity. A gas and power desk
+manages spark and dark spread exposure through physical generation and
+financial hedging. A crude and products desk manages the crack spread against
+its refining position. A carbon desk manages the EUA positions that flow
+through every spread calculation. A trading strategy that ignored these
 cross-commodity linkages would miss the single largest driver of spread P&L.
 """))
 
@@ -831,11 +840,11 @@ the actual margin depends on the specific crude grade, refinery configuration
 industry-standard shorthand because gasoline and gasoil are the two
 highest-value products by volume.
 
-Equinor's Mongstad refinery (near Bergen, Norway) processes roughly 240,000
-barrels per day of crude — primarily Norwegian continental shelf grades — into
-gasoline, diesel, jet fuel, and other products. The CPL desk hedges the
-refining margin using crack spread derivatives, and the 3-2-1 is the benchmark
-against which this hedging is measured.
+A mid-sized European coastal refinery running on the order of a few hundred
+thousand barrels per day of light sweet crude produces exactly this slate.
+Desks with such a position hedge the refining margin using crack spread
+derivatives, and the 3-2-1 is the benchmark against which that hedging is
+measured.
 
 ### Seasonal Decomposition
 
@@ -1335,6 +1344,25 @@ where $\\bar{Q}$ is the unconditional correlation matrix, $a$ is the "news
 impact" parameter (how much today's shock changes tomorrow's correlation),
 $b$ is the persistence parameter, and $a + b < 1$ ensures stationarity.
 
+### Estimation
+
+$a$ and $b$ are estimated, not assumed. Engle's two-step quasi-maximum
+likelihood is used: univariate GARCH models are fitted first to obtain the
+standardised residuals $z_t$, then $(a, b)$ are chosen to minimise the
+correlation-stage objective
+
+$$-2 \\ln L(a, b) = \\sum_t \\left[ \\ln |R_t| + z_t' R_t^{-1} z_t - z_t' z_t \\right]$$
+
+subject to $a \\ge 0$, $b \\ge 0$, $a + b < 1$. The $-z_t' z_t$ term drops the
+volatility-stage contribution, which is constant with respect to $(a, b)$.
+
+One implementation detail matters more than it looks: correlation targeting
+sets $\\bar{Q}$ to the sample **correlation** matrix of the standardised
+residuals, not their covariance matrix. Standardised residuals have unit
+variance only in expectation, so in a finite sample the two differ, and using
+the covariance leaves $R_t$ with off-unit diagonal entries — a "correlation"
+matrix whose diagonal is not 1.
+
 ### Why DCC Matters for Trading
 
 The distinction between a backward-looking rolling correlation and a
@@ -1477,22 +1505,55 @@ where $R$ is the correlation matrix, $\\nu$ is the degrees of freedom (lower
 $\\nu$ = fatter tails = stronger tail dependence), and $t_\\nu^{-1}$ is the
 inverse Student-t CDF.
 
+### Estimation
+
+The copula is fitted by **canonical maximum pseudo-likelihood** (Genest,
+Ghoudi & Rivest, 1995), which deliberately avoids committing to a parametric
+form for the margins. Returns are first replaced by their normalised ranks,
+$\\hat{u}_{i,t} = \\text{rank}(r_{i,t}) / (T+1)$, so that only the dependence
+structure survives the transform. The correlation matrix is then recovered
+from Kendall's $\\tau$ rather than from Pearson correlation,
+
+$$\\rho_{ij} = \\sin\\!\\left(\\frac{\\pi}{2}\\,\\tau_{ij}\\right)$$
+
+(Lindskog, McNeil & Schmock, 2003), because $\\tau$ is invariant to the rank
+transform and robust to the outliers that dominate commodity returns. Only the
+degrees of freedom $\\nu$ are left to a numerical search, maximising
+
+$$\\ell(\\nu) = \\sum_t \\left[ \\ln f_{t,\\nu,R}\\!\\left(t_\\nu^{-1}(\\hat{u}_t)\\right)
+- \\sum_i \\ln f_{t,\\nu}\\!\\left(t_\\nu^{-1}(\\hat{u}_{i,t})\\right) \\right]$$
+
+over $\\nu \\in [2.05, 50]$. Subtracting the marginal log-densities is what
+makes this the *copula* density rather than the joint t density; omitting that
+term would make the objective depend on the margins and destroy the
+transform-invariance the rank step was there to secure.
+
 ### Tail Dependence Coefficient
 
-For the t-copula, the tail dependence coefficient — the probability that two
-assets are jointly in the tail, given that one is — is:
+The tail dependence coefficient is defined as a **limit**, not as a
+probability at any particular threshold:
 
-$$\\lambda_U = \\lambda_L = 2 t_{\\nu+1}\\left(-\\sqrt{\\frac{(\\nu+1)(1-\\rho)}{1+\\rho}}\\right)$$
+$$\\lambda_L = \\lim_{q \\to 0^+} \\Pr\\!\\left[U_2 \\le q \\mid U_1 \\le q\\right]$$
 
-A Gaussian copula (the limit as $\\nu \\to \\infty$) has $\\lambda = 0$ —
-regardless of the correlation. This is the catastrophic failure mode: under
-Gaussian assumptions, extreme events in Brent and TTF are independent in the
-tails, even if their correlation is 0.6. Under a t-copula with $\\nu = 5$,
-the same correlation implies tail dependence of roughly 0.20 — a one-in-five
-chance that TTF crashes given that Brent has already crashed.
+that is, the limiting probability that one asset breaches its $q$-quantile
+given that the other already has, as $q$ is pushed to the extreme. For the
+t-copula this limit has a closed form, and it is radially symmetric — the
+lower and upper coefficients are equal:
+
+$$\\lambda_U = \\lambda_L = 2\\, t_{\\nu+1}\\left(-\\sqrt{\\frac{(\\nu+1)(1-\\rho)}{1+\\rho}}\\right)$$
+
+A Gaussian copula (the limit as $\\nu \\to \\infty$) has $\\lambda = 0$ exactly
+for any $\\rho < 1$ — not approximately zero, but identically zero. This is the
+catastrophic failure mode: under Gaussian assumptions, extreme events in Brent
+and TTF become asymptotically independent in the tails even at a correlation
+of 0.6. Under a t-copula with $\\nu = 5$, the same correlation implies
+$\\lambda \\approx 0.27$. At any finite quantile the conditional exceedance
+probability differs from this limiting value, so $\\lambda$ should be read as a
+comparative measure of tail linkage rather than as a directly tradeable odds
+quote.
 
 For a trading desk with positions in both commodities, the difference between
-$\\lambda = 0$ and $\\lambda = 0.20$ is the difference between a diversified
+$\\lambda = 0$ and $\\lambda \\approx 0.27$ is the difference between a diversified
 portfolio and a concentrated one — during exactly the stress event when
 diversification is needed most.
 """))
@@ -1621,6 +1682,8 @@ NB3.append(md("""\
 - Demarta, S. & McNeil, A.J. (2005). "The t Copula and Related Copulas." *International Statistical Review*, 73(1), 111–129.
 - Engle, R.F. (2002). "Dynamic Conditional Correlation: A Simple Class of Multivariate Generalized Autoregressive Conditional Heteroskedasticity Models." *Journal of Business & Economic Statistics*, 20(3), 339–350.
 - J.P. Morgan / Reuters (1996). *RiskMetrics — Technical Document* (4th ed.).
+- Genest, C., Ghoudi, K. & Rivest, L.-P. (1995). A semiparametric estimation procedure of dependence parameters in multivariate families of distributions. *Biometrika*, 82(3), 543-552.
+- Lindskog, F., McNeil, A. & Schmock, U. (2003). Kendall's tau for elliptical distributions. In *Credit Risk: Measurement, Evaluation and Management*, 149-156. Physica-Verlag.
 - Sklar, A. (1959). "Fonctions de répartition à n dimensions et leurs marges." *Publications de l'Institut de Statistique de l'Université de Paris*, 8, 229–231.
 - Regulation (EU) 2019/2099 (EMIR Refit). *OTC derivatives, central counterparties and trade repositories*.
 
@@ -1657,17 +1720,19 @@ positions determine whether the book is diversified or concentrated. The
 dependence models from Notebook 3 are the inputs; this notebook applies them
 to measure and decompose portfolio risk.
 
-The portfolio constructed here mirrors the structure of an Equinor MMP book:
-long Brent crude (+€9.2M notional), short 3-2-1 crack spread (−€4.6M), long
+The portfolio constructed here mirrors the structure of an integrated energy
+trading book: long Brent crude (+€9.2M notional), short 3-2-1 crack spread (−€4.6M), long
 TTF gas (+€8.0M), short spark spread (−€4.0M), and long EUA carbon (+€3.0M).
 The two short spread positions are structural hedges — when crude or gas
 rallies, the respective spreads typically compress, offsetting some of the
 directional loss.
 
-Value-at-Risk (VaR) and Expected Shortfall (ES) are computed via t-copula
-simulation with 10,000 scenarios. The t-copula captures tail dependence that
-a Gaussian correlation matrix would miss, producing VaR estimates that reflect
-the real probability of joint extreme moves.
+Value-at-Risk (VaR) and Expected Shortfall (ES) are computed by filtered
+historical simulation over 10,000 scenarios: GARCH-filtered residuals are
+resampled empirically and coupled through a fitted t-copula. The t-copula
+captures tail dependence that a Gaussian correlation matrix would miss, while
+the empirical residual quantiles avoid imposing a parametric shape on the
+marginal tails.
 
 The model is backtested using a rolling 250-day window: at each date, a
 t-copula is fitted on the trailing 250 days, the 95% VaR is simulated, and
@@ -1684,14 +1749,26 @@ that shows which positions drive the loss (or gain) under that regime.
 
 ### Regulatory Context
 
-The risk metrics computed here are not academic exercises. Under **EMIR**,
-counterparties to non-cleared OTC derivatives must exchange variation margin
-(daily mark-to-market) and initial margin (calibrated to a 99% confidence
-level over a 10-day closeout period). Under the **Basel Committee's FRTB**
-(Fundamental Review of the Trading Book), banks must use Expected Shortfall
-at 97.5% for market risk capital. The VaR and ES numbers in this notebook are
-the same metrics that determine regulatory capital and collateral requirements
-for a real energy trading desk.
+It is worth being precise about which rules actually bind an energy trading
+book, because the answer is not the one a bank risk textbook gives.
+
+An energy market participant whose derivatives trading is ancillary to a
+commercial energy business is exempt from MiFID II authorisation under Article
+2(1)(j), and therefore falls outside the bank and investment-firm prudential
+regimes (CRR/CRD and IFR/IFD) entirely. What does bind it is **EMIR** for
+clearing, margining, and trade reporting, **REMIT II** for wholesale market
+conduct and transaction reporting, and the **EU ETS Directive** for allowance
+surrender. No regulator requires this desk to compute a 97.5% Expected
+Shortfall.
+
+The bank framework still matters as a **modelling benchmark**. Under the Basel
+Committee's FRTB, banks must use Expected Shortfall at 97.5% for market risk
+capital; in the EU this arrives via CRR3 (Regulation (EU) 2024/1623), whose
+market risk own-funds requirement has itself been deferred to 1 January 2027
+by Commission Delegated Regulation (EU) 2025/1496. The metrics are adopted
+here because they are defensible risk measurement, not because they are
+compulsory — and the notebook says so rather than implying regulatory force
+it does not have.
 """))
 
 NB4.append(md("""\
@@ -1699,15 +1776,18 @@ NB4.append(md("""\
 
 ### EMIR Initial Margin
 
-Under EMIR (Regulation 648/2012, as amended), counterparties with outstanding
-non-cleared OTC derivatives above €8 billion notional must exchange initial
-margin. The margin must cover potential future exposure at a 99% confidence
-level over a 10-day closeout period. In practice, this is computed via either
+Under EMIR (Regulation 648/2012, as amended), counterparties whose aggregate
+average notional amount of non-cleared OTC derivatives exceeds €8 billion must
+exchange initial margin. Non-financial counterparties below the clearing
+thresholds are outside this obligation, so it binds the larger energy trading
+groups rather than all of them. The margin must cover potential future
+exposure at a 99% confidence level over a 10-day closeout period, computed via
+either
 a standardised schedule (the "grid method") or an approved internal model —
 typically a Monte Carlo VaR with copula dependence, identical in structure to
 the engine built here.
 
-### Basel FRTB
+### Basel FRTB (Benchmark, Not Binding Here)
 
 The Fundamental Review of the Trading Book (Basel Committee, 2019) replaced
 VaR at 99% with Expected Shortfall at 97.5% as the primary market risk metric.
@@ -1768,13 +1848,13 @@ print(f"Returns shape: {aligned_rets.shape}")
 NB4.append(md("""\
 ## 2. Portfolio Construction
 
-A multi-market proprietary trading (MMP) book with five legs, constructed to
-reflect a realistic Equinor trading mandate:
+A five-leg book spanning crude, products, gas, power, and carbon, constructed
+to reflect a realistic integrated trading mandate:
 
 | Position | Direction | Notional (EUR m) | Book | Rationale |
 |----------|-----------|-----------------|------|-----------|
-| BRENT | Long | 9.2 | Crude | Structural long — Equinor is a crude producer |
-| CRACK 3-2-1 | Short | −4.6 | Products | Mongstad refinery margin hedge |
+| BRENT | Long | 9.2 | Crude | Structural long — upstream production exposure |
+| CRACK 3-2-1 | Short | −4.6 | Products | Refining margin hedge |
 | TTF | Long | 8.0 | Gas | European gas exposure |
 | SPARK SPREAD | Short | −4.0 | Power | Gas-to-power margin hedge |
 | EUA | Long | 3.0 | Carbon | Compliance + trading position |
@@ -1811,17 +1891,32 @@ print(f"Net/gross ratio:         {sum(positions.values())/total_abs_notional:.2f
 """))
 
 NB4.append(md("""\
-## 3. VaR & Expected Shortfall — t-Copula Simulation
+## 3. VaR & Expected Shortfall — Filtered Historical Simulation
 
-A multivariate t-copula is fitted to the standardised return residuals. 10,000
-joint scenarios are then simulated from the fitted copula, transformed through
-the marginal inverse CDFs, and applied to the portfolio positions to produce
-a simulated P&L distribution.
+The engine uses **filtered historical simulation** (Barone-Adesi, Giannopoulos
+& Vosper, 1999) with a t-copula dependence layer. This avoids assuming a
+parametric shape for the marginal shocks, which is where a pure parametric
+Monte Carlo most often understates commodity tail risk. Four steps:
 
-$$\\text{P\\&L}_{\\text{sim}} = \\sum_i w_i \\times \\tilde{r}_i \\times \\sigma_i$$
+1. **Filter.** A GARCH(1,1) model is fitted per commodity, producing a
+   one-step-ahead volatility forecast $\\sigma_{i,T+1}$, a conditional mean
+   $\\mu_i$, and a series of standardised residuals $z_{i,t}$.
+2. **Couple.** A t-copula is fitted to the *ranks* of those residuals and used
+   to draw 10,000 dependent uniform vectors $u^{(s)} \\in (0,1)^k$.
+3. **Invert empirically.** Each uniform is mapped back through the *empirical*
+   quantile function of that commodity's own residuals,
+   $\\tilde{z}_i^{(s)} = \\hat{Q}_{z_i}(u_i^{(s)})$ — so the realised shape of
+   the historical shock distribution is preserved, skew and all.
+4. **Rescale and aggregate.** Returns are reconstituted at today's volatility
+   and applied to the book:
 
-where $w_i$ is the position notional, $\\tilde{r}_i$ is the simulated
-standardised return, and $\\sigma_i$ is the current volatility estimate.
+$$r_i^{(s)} = \\mu_i + \\sigma_{i,T+1}\\,\\tilde{z}_i^{(s)}
+\\qquad
+\\text{P\\&L}^{(s)} = \\sum_i w_i\\, r_i^{(s)}$$
+
+where $w_i$ is the position notional. Filtering by GARCH makes the sample
+conditionally i.i.d. so that historical shocks may legitimately be resampled;
+rescaling by $\\sigma_{i,T+1}$ puts them back into today's volatility regime.
 
 VaR at confidence level $\\alpha$ is the negative $\\alpha$-quantile of the
 simulated P&L distribution:
@@ -1868,15 +1963,31 @@ using Euler's theorem for homogeneous risk measures. The allocation answers a
 specific question: "if you had to reduce risk, which position would you cut
 first?"
 
-For a risk measure $R(w)$ that is homogeneous of degree 1 (such as VaR under
-an elliptic distribution), Euler's theorem gives:
+VaR is positively homogeneous of degree 1 in the position vector — doubling
+every position doubles the loss quantile — so Euler's theorem applies:
 
 $$R(w) = \\sum_i w_i \\frac{\\partial R}{\\partial w_i}$$
 
-Each term is the **component VaR** of position $i$. Negative contributions
-indicate genuine diversification: a short spread position that offsets
-directional commodity risk reduces total VaR. The waterfall chart below shows
-how each position contributes to — or offsets — the total 95% VaR.
+Each term is the **component VaR** of position $i$, and the terms sum exactly
+to total VaR. The marginal derivative has a closed form as a conditional
+expectation (Hallerbach, 2003):
+
+$$\\text{CVaR}_i = w_i \\frac{\\partial \\text{VaR}}{\\partial w_i}
+= -\\,w_i\\, \\mathbb{E}\\!\\left[r_i \\mid r_p = -\\text{VaR}\\right]$$
+
+Estimating that conditional expectation from a finite simulation requires
+care. Bumping one position and re-taking the quantile does not work: with
+10,000 draws the perturbed portfolio almost always selects the *same* order
+statistic, so the finite difference collapses to that single scenario's return
+and is pure sampling noise. Instead the expectation is estimated by a Gaussian
+kernel weighting of scenarios whose portfolio P&L lands near $-\\text{VaR}$,
+with a Silverman-rule bandwidth, which uses the whole neighbourhood of the
+quantile rather than one draw.
+
+Negative contributions indicate genuine diversification: a short spread
+position that offsets directional commodity risk reduces total VaR. The
+waterfall chart below shows how each position contributes to — or offsets —
+the total 95% VaR.
 """))
 
 NB4.append(code("""\
@@ -2173,7 +2284,10 @@ NB4.append(md("""\
 ## References
 
 - Artzner, P., Delbaen, F., Eber, J.-M., & Heath, D. (1999). "Coherent Measures of Risk." *Mathematical Finance*, 9(3), 203–228.
+- Barone-Adesi, G., Giannopoulos, K. & Vosper, L. (1999). VaR without correlations for portfolios of derivative securities. *Journal of Futures Markets*, 19(5), 583-602.
 - Basel Committee on Banking Supervision (2019). *Minimum Capital Requirements for Market Risk* (FRTB).
+- Commission Delegated Regulation (EU) 2025/1496. *Amending Regulation (EU) No 575/2013 as regards the date of application of the own funds requirements for market risk*.
+- Hallerbach, W. G. (2003). Decomposing portfolio value-at-risk: a general analysis. *Journal of Risk*, 5(2), 1-18.
 - Christoffersen, P.F. (1998). "Evaluating Interval Forecasts." *International Economic Review*, 39(4), 841–862.
 - Demarta, S. & McNeil, A.J. (2005). "The t Copula and Related Copulas." *International Statistical Review*, 73(1), 111–129.
 - Kupiec, P.H. (1995). "Techniques for Verifying the Accuracy of Risk Measurement Models." *Journal of Derivatives*, 3(2), 73–84.

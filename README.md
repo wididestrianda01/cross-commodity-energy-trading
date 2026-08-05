@@ -12,7 +12,7 @@ European energy markets do not clear independently. A gas supply shock propagate
 
 2. **Carbon-to-power pass-through.** Under the EU Emissions Trading System, generators must surrender allowances for each tonne of CO2 emitted. A €10/t increase in EUA prices adds approximately €3.70/MWh to the marginal cost of a 55%-efficient combined-cycle gas turbine and roughly €9.00/MWh for a 38%-efficient coal plant. The empirical pass-through rate, measured by regressing German power returns on carbon returns, is 0.80-1.00 — carbon costs flow through to power prices at near-complete rates.
 
-3. **Fuel switching.** The clean spark spread (CSS) and clean dark spread (CDS) measure the profitability of gas and coal generation respectively, net of fuel and carbon costs. When CSS exceeds CDS, gas is the cheaper marginal fuel and tends to set the power price. At €100/t carbon, a modern CCGT has a carbon-cost advantage of roughly €170/MWh over a hard-coal plant because coal emits approximately 2.5 times more CO2 per MWh. The platform tracks this fuel-switching signal daily and identifies the break-even carbon price at which the two technologies are equally profitable.
+3. **Fuel switching.** The clean spark spread (CSS) and clean dark spread (CDS) measure the profitability of gas and coal generation respectively, net of fuel and carbon costs. When CSS exceeds CDS, gas is the cheaper marginal fuel and tends to set the power price. At €100/t carbon, a modern CCGT has a carbon-cost advantage of roughly €53/MWh over a hard-coal plant (€37/MWh versus €90/MWh), because coal emits approximately 2.5 times more CO2 per MWh of electricity generated. The platform tracks this fuel-switching signal daily and identifies the break-even carbon price at which the two technologies are equally profitable.
 
 4. **Correlation regime shifts.** During normal market conditions, TTF and German power exhibit moderate correlation (ρ ≈ 0.3-0.4). During the August 2022 gas crisis, this correlation rose to 0.69 as gas prices dominated all other cost factors. A static covariance matrix estimated from 2019 data would understate portfolio risk by roughly 40% during the crisis. The DCC-GARCH model captures this regime shift within approximately 3 trading days; a rolling 60-day correlation takes 25-30 days to register the same change.
 
@@ -57,7 +57,7 @@ Four Jupyter notebooks provide the theoretical foundation, regulatory context, a
 | 1 | **Market Landscape** | Market microstructure (trading venues, desk-level exposure), data pipeline, summary statistics with Jarque-Bera normality tests, normalised price paths, log-return distributions with normal overlays, rolling volatility regimes, ADF stationarity tests | [PDF](docs/notebooks/01_market_landscape.pdf) |
 | 2 | **Spread Economics** | EU ETS cap-and-trade primer (Phase IV, MSR, CBAM), clean spark spread with regime classification, clean dark spread with carbon cost decomposition, 3-2-1 crack spread with STL seasonal decomposition, fuel-switching signal and merit-order economics, thermal efficiency sensitivity analysis | [PDF](docs/notebooks/02_spread_economics.pdf) |
 | 3 | **Correlation & Regime Shifts** | 2022 gas crisis timeline, unconditional vs rolling correlation, DCC-GARCH formal specification (Engle 2002), pre/post-invasion correlation matrices, t-copula tail dependence with Sklar's theorem derivation, t-copula vs Gaussian 95% confidence contours | [PDF](docs/notebooks/03_correlation_crisis.pdf) |
-| 4 | **Portfolio Risk** | EMIR/Basel FRTB regulatory capital framework, t-copula Monte Carlo VaR and Expected Shortfall, Euler-allocated component VaR, rolling backtest with Kupiec and Christoffersen tests, stress scenario P&L waterfalls, model risk and limitations | [PDF](docs/notebooks/04_portfolio_risk.pdf) |
+| 4 | **Portfolio Risk** | Regulatory context for an energy trading book (EMIR, REMIT II, MiFID II, EU ETS) and how bank trading-book standards are borrowed as a modelling benchmark, filtered historical simulation VaR and Expected Shortfall under a t-copula, Euler-allocated component VaR, rolling backtest with Kupiec and Christoffersen tests, stress scenario P&L waterfalls, model risk and limitations | [PDF](docs/notebooks/04_portfolio_risk.pdf) |
 
 To generate PDFs: `bash notebooks/export_pdfs.sh` (requires `weasyprint`).
 
@@ -87,7 +87,9 @@ The signal is classified into three regimes: gas-favored (>€5/MWh), coal-favor
 
 $$\text{Crack} = \frac{2 \times P_{\text{RBOB}} + 1 \times P_{\text{Gasoil}} - 3 \times P_{\text{Brent}}}{3}$$
 
-The 3-2-1 ratio reflects a simplified refinery yield: 3 barrels of crude produce 2 barrels of gasoline and 1 barrel of distillate. All prices are in USD per native unit. The seasonal decomposition uses additive STL with a period of 252 trading days to separate the trend, annual seasonal pattern, and residual component.
+where every leg is first expressed in USD/bbl: RBOB is quoted in USD/gal (× 42), ICE Gasoil in USD/tonne (÷ 7.45), and Brent already in USD/bbl. Combining the raw quotes without this normalisation yields a finite, plausible-looking number that is dimensionally meaningless.
+
+The 3-2-1 ratio reflects a simplified refinery yield: 3 barrels of crude produce 2 barrels of gasoline and 1 barrel of distillate. The seasonal decomposition uses additive STL with a period of 252 trading days to separate the trend, annual seasonal pattern, and residual component.
 
 ### Break-even carbon price
 
@@ -117,7 +119,11 @@ $$Q_t = (1 - a - b)\bar{Q} + a(e_{t-1}e_{t-1}') + bQ_{t-1}$$
 
 $$R_t = \text{diag}(Q_t)^{-1/2} \, Q_t \, \text{diag}(Q_t)^{-1/2}$$
 
-where e_t are the standardized residuals from step 1, Q̄ is the unconditional covariance matrix (correlation targeting), and a and b are the DCC parameters (default a = 0.05, b = 0.93). The correlation matrix R_t adapts to new information within days; a rolling 60-day correlation window smooths over structural breaks.
+where e_t are the standardized residuals from step 1 and Q̄ is their unconditional *correlation* matrix (correlation targeting — a covariance matrix here would leave R_t inconsistently scaled). The parameters a and b are estimated by quasi-maximum-likelihood on the second-stage objective
+
+$$-2 \ln L(a, b) = \sum_t \left[ \ln|R_t| + e_t' R_t^{-1} e_t - e_t' e_t \right]$$
+
+subject to a ≥ 0, b ≥ 0 and a + b < 1, which keeps Q_t positive definite and the correlation process mean-reverting. Fitted values are reported in the notebook rather than assumed. The correlation matrix R_t adapts to new information within days; a rolling 60-day correlation window smooths over structural breaks.
 
 ### t-Copula
 
@@ -125,21 +131,34 @@ The multivariate t-copula captures joint tail dependence — the tendency for ex
 
 $$C(u_1, \ldots, u_n; R, \nu) = t_{\nu, R}(t_\nu^{-1}(u_1), \ldots, t_\nu^{-1}(u_n))$$
 
-The correlation matrix R is estimated from standardized residuals. The degrees of freedom ν are estimated by maximum likelihood over the interval [2.1, 30]. Tail dependence coefficients λ_ij are computed analytically:
+The copula is fitted by canonical maximum pseudo-likelihood (Genest, Ghoudi & Rivest, 1995). Margins are left unspecified and rank-transformed to pseudo-observations u_i = rank_i / (n + 1), so a misspecified parametric margin cannot contaminate the estimated dependence. The correlation matrix R is obtained by Kendall's-τ inversion, ρ = sin(πτ/2) (Lindskog, McNeil & Schmock, 2003), which is robust to the heavy tails that motivate using a t-copula in the first place — the Pearson correlation of raw residuals is biased for the copula parameter under exactly those conditions. The degrees of freedom ν are then estimated over [2.05, 50] by maximising the *copula* log-likelihood,
+
+$$\ln c(u) = \ln f_{t,\nu,R}\!\left(t_\nu^{-1}(u)\right) - \sum_i \ln f_{t,\nu}\!\left(t_\nu^{-1}(u_i)\right)$$
+
+The subtracted margin terms matter: maximising the joint density alone would let the marginal fit drive ν and would not be invariant to the marginal transform. Tail dependence coefficients λ_ij are computed analytically:
 
 $$\lambda_{ij} = 2 \, t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)$$
 
-For the TTF-German power pair, the fitted ν is typically 4-6, producing tail dependence of 0.30-0.45. A Gaussian copula (ν→∞) would imply λ_ij ≈ 0 for the same correlation, systematically underestimating joint-tail risk.
+The t-copula is radially symmetric, so lower- and upper-tail coefficients are equal. For the TTF-German power pair, the fitted ν is typically 4-6, producing tail dependence of 0.30-0.45. A Gaussian copula (ν→∞) has λ_ij = 0 exactly for any ρ < 1, systematically understating joint-tail risk.
 
 ### Portfolio VaR and component allocation
 
-Portfolio PnL is simulated by drawing 10,000 correlated samples from the fitted t-copula, mapping them to returns through the inverse normal CDF scaled by historical volatility:
+VaR and ES are produced by Filtered Historical Simulation (Barone-Adesi, Giannopoulos & Vosper, 1999) over 10,000 draws:
 
-$$\text{VaR}_\alpha = -Q_\alpha(\text{PnL}), \quad \text{ES}_\alpha = -\mathbb{E}[\text{PnL} \mid \text{PnL} \leq -\text{VaR}_\alpha]$$
+1. Take the one-step-ahead volatility forecast σ_{T+1} and the standardized residuals from each commodity's GARCH fit.
+2. Draw rank-correlated uniforms from the fitted t-copula, preserving joint tail behaviour across commodities.
+3. Map each uniform through the **empirical** quantile function of that commodity's residuals.
+4. Rescale: r_i = μ_i + σ_{i,T+1} · z_i, then aggregate to portfolio P&L at the current positions.
 
-Component VaR uses Euler allocation through finite-difference marginal contributions:
+$$\text{VaR}_\alpha = -Q_{1-\alpha}(\text{PnL}), \quad \text{ES}_\alpha = -\mathbb{E}[\text{PnL} \mid \text{PnL} \leq -\text{VaR}_\alpha]$$
 
-$$\text{CVaR}_i = w_i \times \frac{\partial \text{VaR}}{\partial w_i} \approx w_i \times \frac{\text{VaR}(w_i + h) - \text{VaR}(w_i - h)}{2h}$$
+Steps 1 and 3 are what make the estimate conditional and fat-tailed. Applying a normal inverse CDF to an unconditional sample standard deviation — the textbook shortcut — discards both the current volatility state and the excess kurtosis of the residuals, and understates the tail on exactly the days that matter.
+
+VaR is positively homogeneous of degree one in the position vector, so Euler's theorem gives an exact additive decomposition:
+
+$$\text{CVaR}_i = w_i \frac{\partial \text{VaR}}{\partial w_i} = -w_i \, \mathbb{E}\!\left[ r_i \mid r_p = -\text{VaR} \right]$$
+
+The conditional expectation is estimated with a Gaussian kernel around the VaR quantile (Hallerbach, 2003). Finite differences are not used: bumping a position and re-taking an order statistic usually selects the *same* simulated scenario, so the derivative returns zero or pure Monte Carlo noise. The kernel estimator uses every scenario near the quantile and sums back to total VaR by construction.
 
 This decomposition answers the question: if I must reduce risk, which position should I cut?
 
@@ -169,11 +188,15 @@ All prices are normalised to EUR/MWh for cross-commodity comparability. Conversi
 
 | From | Factor |
 |------|--------|
-| USD/bbl crude → EUR/MWh | ÷ 1.628 MWh/bbl × EURUSD |
-| USD/gal RBOB → EUR/MWh | native unit preserved for crack spread; volume conversion: 1 gal ≈ 0.119 MWh gasoline |
-| USD/tonne coal → EUR/MWh | ÷ 8.14 MWh/tonne × EURUSD |
+| USD/bbl crude → EUR/MWh | ÷ EURUSD ÷ 1.628 MWh/bbl |
+| USD/gal RBOB → EUR/MWh | ÷ EURUSD ÷ 0.0331 MWh/gal (native unit preserved for the crack spread) |
+| USD/tonne coal → EUR/MWh | ÷ EURUSD ÷ 6.978 MWh/tonne |
 | EUR/MWh gas/power | 1.0 |
 | EUR/tCO2 → EUR/MWh (spreads) | × emission_factor of the plant |
+
+`EURUSD=X` quotes USD per EUR, so USD prices are divided by it. The API2 CIF ARA coal contract is specified at 6,000 kcal/kg NAR, which is 6.978 MWh/tonne; the more commonly quoted 8.141 MWh/tonne is tonne-of-coal-equivalent at 7,000 kcal/kg and does not match the traded contract.
+
+Crack spread legs are quoted in three different units and are converted to USD/bbl before the 2:1:3 ratio is applied — RBOB × 42 gal/bbl, Gasoil ÷ 7.45 bbl/tonne, Brent unchanged.
 
 The pipeline fetches data from three sources independently. If any source fails, the pipeline exits with code 1 and reports the error to stderr. The `--synthetic` flag loads synthetic data for testing only; it is never invoked as a fallback.
 
@@ -185,7 +208,7 @@ The pipeline fetches data from three sources independently. If any source fails,
 | TTF natural gas | ICE/EEX (yfinance) | `TTF=F` | 2019-01-02 | 1,909 |
 | EUA carbon | EEX auctions | custom fetcher (public EEX) | 2020-01-07 | 1,438 |
 | German power | ENTSO-E | `DE_LU` bidding zone | 2019-01-01 | 2,774 |
-| Nord Pool system | ENTSO-E | `NO_1` bidding zone | 2019-01-01 | 2,774 |
+| Nordic power (NO1) | ENTSO-E | `NO_1` bidding zone | 2019-01-01 | 2,774 |
 | RBOB gasoline | NYMEX (yfinance) | `RB=F` | 2019-01-02 | 1,910 |
 | ICE Gasoil | ICE (yfinance) | `GOC=F` | 2019-01-02 | 1,908 |
 | API2 coal | ICE (yfinance) | `MTF=F` | 2019-01-02 | 1,756 |
@@ -207,9 +230,9 @@ The EEX auction report XLSX files are downloaded from the public EEX Group URL f
 
 **Correlation regime shifts.** The TTF-German power rolling 60-day correlation was approximately 0.3 in 2019, rose to 0.69 during the August 2022 gas crisis, and fell to 0.12 by late 2023 as renewable generation structurally reduced the gas-to-power pass-through. A static covariance matrix estimated on pre-2022 data understates crisis-period portfolio risk by roughly 40%.
 
-**Carbon-fuel-switching nexus.** At €100/t carbon, the break-even analysis shows that gas generation has a fuel-cost plus carbon-cost advantage of roughly €170/MWh over coal. The actual EUA price has exceeded the break-even level consistently since 2021, confirming that carbon policy has made gas the structurally cheaper marginal fuel in Germany.
+**Carbon-fuel-switching nexus.** At €100/t carbon, the carbon-cost component alone gives gas generation a roughly €53/MWh advantage over coal; the total advantage also depends on the prevailing TTF-versus-API2 fuel-cost differential and therefore varies day to day. The actual EUA price has exceeded the break-even level consistently since 2021, confirming that carbon policy has made gas the structurally cheaper marginal fuel in Germany.
 
-**Tail dependence.** The fitted t-copula degrees of freedom over the full sample is approximately 5, yielding a tail dependence coefficient of roughly 0.35 for the TTF-power pair. This means that when TTF experiences a +5σ daily move, German power has an estimated 35% probability of a simultaneous +4σ move. A Gaussian model would assign near-zero probability to this event.
+**Tail dependence.** The fitted t-copula degrees of freedom over the full sample is approximately 5, yielding a tail dependence coefficient of roughly 0.35 for the TTF-power pair. The coefficient is a limiting quantity: as the threshold quantile q approaches 1, the probability that German power breaches its own q-quantile *given* that TTF has breached its q-quantile tends to 35%, rather than to zero as a Gaussian copula would imply at the same correlation. It is not the probability attached to any single named sigma level.
 
 **Backtest calibration.** The rolling 252-day 95% VaR model recorded 59 breaches in 1,210 out-of-sample days (4.9% observed versus 5.0% expected). The Kupiec POF test yields p = 0.843. The model is well-calibrated at the 95% level.
 
