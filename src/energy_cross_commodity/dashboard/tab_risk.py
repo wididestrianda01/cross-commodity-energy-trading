@@ -1,6 +1,7 @@
 """Tab 3: Risk Command — VaR waterfall, breaches, scenario P&L."""
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import duckdb
@@ -93,8 +94,55 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 
     st.caption(f"t-Copula df = {var_result.get('df', 'computed')}. Euler allocations sum within 5% of total VaR.")
 
-    # ... rest of tab: backtest chart + scenarios (unchanged from below)
+    # --- VaR Backtesting Chart ---
+    st.subheader("VaR Backtesting")
+    bt_df = conn.execute("SELECT date, pnl, var_estimate FROM var_backtest ORDER BY date").df()
 
+    if bt_df.empty:
+        st.info("No backtest data. Run `python -m energy_cross_commodity.pipeline` to populate.")
+    else:
+        bt_df["date"] = pd.to_datetime(bt_df["date"])
+        bt_df["breach"] = bt_df["pnl"] < -bt_df["var_estimate"]
+
+        fig_bt = go.Figure()
+        fig_bt.add_trace(go.Scatter(
+            x=bt_df["date"], y=bt_df["pnl"], mode="lines",
+            line=dict(color="#6B6B6B", width=0.8), name="Daily P&L",
+        ))
+        fig_bt.add_trace(go.Scatter(
+            x=bt_df["date"], y=-bt_df["var_estimate"], mode="lines",
+            line=dict(color="#00003C", width=1.5), name="VaR 95% (lower bound)",
+            fill=None,
+        ))
+        breaches_df = bt_df[bt_df["breach"]]
+        if not breaches_df.empty:
+            fig_bt.add_trace(go.Scatter(
+                x=breaches_df["date"], y=breaches_df["pnl"],
+                mode="markers", marker=dict(color="#C44536", size=6, symbol="x"),
+                name=f"Breaches ({len(breaches_df)})",
+            ))
+
+        fig_bt.update_layout(
+            height=300, margin=dict(l=10, r=10, t=10, b=10),
+            yaxis_title="P&L (EUR)", xaxis_title="",
+            showlegend=True, legend=dict(orientation="h", yanchor="top", y=-0.15),
+        )
+        st.plotly_chart(fig_bt, use_container_width=True)
+
+        from energy_cross_commodity.risk.var_engine import kupiec_test
+        breaches = int(bt_df["breach"].sum())
+        total = len(bt_df)
+        kt = kupiec_test(breaches, total, 0.95)
+
+        bc1, bc2, bc3 = st.columns(3)
+        bc1.metric("VaR 95% Breaches", f"{breaches} / {total}",
+            delta=f"Expected ~{total*0.05:.0f}", delta_color="off")
+        bc2.metric("Kupiec POF p-value", f"{kt['p_value']:.3f}",
+            delta="Well-calibrated" if kt["p_value"] > 0.05 else "Check model",
+            delta_color="normal" if kt["p_value"] > 0.05 else "inverse")
+        coverage = breaches / total if total > 0 else 0
+        bc3.metric("Actual Coverage", f"{coverage:.1%}",
+            delta="vs 5.0% target", delta_color="off")
     st.subheader("Stress Scenario P&L")
     scenario_choice = st.selectbox("Select scenario", list(SCENARIOS.keys()), format_func=lambda x: SCENARIOS[x].name)
     scenario = SCENARIOS[scenario_choice]
