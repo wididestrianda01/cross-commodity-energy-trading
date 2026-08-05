@@ -14,7 +14,7 @@ European energy markets do not clear independently. A gas supply shock propagate
 
 3. **Fuel switching.** The clean spark spread (CSS) and clean dark spread (CDS) measure the profitability of gas and coal generation respectively, net of fuel and carbon costs. When CSS exceeds CDS, gas is the cheaper marginal fuel and tends to set the power price. At €100/t carbon, a modern CCGT has a carbon-cost advantage of roughly €170/MWh over a hard-coal plant because coal emits approximately 2.5 times more CO2 per MWh. The platform tracks this fuel-switching signal daily and identifies the break-even carbon price at which the two technologies are equally profitable.
 
-4. **Correlation regime shifts.** During normal market conditions, TTF and German power exhibit moderate correlation (ρ ≈ 0.3-0.4). During the August 2022 gas crisis, this correlation rose above 0.9 as gas prices dominated all other cost factors. A static covariance matrix estimated from 2019 data would understate portfolio risk by roughly 40% during the crisis. The DCC-GARCH model captures this regime shift within approximately 3 trading days; a rolling 60-day correlation takes 25-30 days to register the same change.
+4. **Correlation regime shifts.** During normal market conditions, TTF and German power exhibit moderate correlation (ρ ≈ 0.3-0.4). During the August 2022 gas crisis, this correlation rose to 0.69 as gas prices dominated all other cost factors. A static covariance matrix estimated from 2019 data would understate portfolio risk by roughly 40% during the crisis. The DCC-GARCH model captures this regime shift within approximately 3 trading days; a rolling 60-day correlation takes 25-30 days to register the same change.
 
 ## Architecture
 
@@ -191,7 +191,7 @@ The EEX auction report XLSX files are downloaded from the public EEX Group URL f
 
 **August 2022 spark spread inversion.** TTF rose from roughly €80/MWh in January 2022 to over €300/MWh in August. The clean spark spread dropped below −€200/MWh. Gas plants became deeply unprofitable; German coal plants increased output despite carbon costs. The fuel-switching signal flipped to coal-favored for approximately 60 consecutive trading days.
 
-**Correlation regime shifts.** The TTF-German power rolling 60-day correlation was approximately 0.3 in 2019, rose above 0.9 during the August 2022 gas crisis, and fell below 0.3 again by late 2023 as renewable generation structurally reduced the gas-to-power pass-through. A static covariance matrix estimated on pre-2022 data understates crisis-period portfolio risk by roughly 40%.
+**Correlation regime shifts.** The TTF-German power rolling 60-day correlation was approximately 0.3 in 2019, rose to 0.69 during the August 2022 gas crisis, and fell to 0.12 by late 2023 as renewable generation structurally reduced the gas-to-power pass-through. A static covariance matrix estimated on pre-2022 data understates crisis-period portfolio risk by roughly 40%.
 
 **Carbon-fuel-switching nexus.** At €100/t carbon, the break-even analysis shows that gas generation has a fuel-cost plus carbon-cost advantage of roughly €170/MWh over coal. The actual EUA price has exceeded the break-even level consistently since 2021, confirming that carbon policy has made gas the structurally cheaper marginal fuel in Germany.
 

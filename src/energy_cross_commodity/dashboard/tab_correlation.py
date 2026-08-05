@@ -58,7 +58,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             yaxis=dict(range=[-1, 1]),
         )
         st.plotly_chart(fig_ts, width="stretch")
-        st.caption("Correlation spikes in crises. Aug 2022: TTF-power correlation hit ~0.9. By 2023, decoupling from renewables pushed it back toward ~0.3.")
+        st.caption("Correlation spikes in crises. Aug 2022: TTF-power correlation reached 0.69. By 2023, decoupling from renewables pushed it back toward 0.12.")
 
     # --- Interactive Date Picker + Correlation Matrix ---
     st.subheader("Correlation Matrix — Select Date")
@@ -167,7 +167,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 **Rolling correlation time series** tracks the 60-day Pearson correlation between TTF
 natural gas and German day-ahead power. During normal market conditions (2019, 2023-2024),
 the correlation is moderate (ρ ≈ 0.3–0.4). During the August 2022 gas crisis, it rose
-above 0.9 as gas prices dominated all other cost factors in the merit order. The 2023
+to 0.69 as gas prices dominated all other cost factors in the merit order. The 2023
 decoupling reflects increased renewable penetration structurally reducing the gas-to-power
 pass-through — a key energy transition dynamic.
 

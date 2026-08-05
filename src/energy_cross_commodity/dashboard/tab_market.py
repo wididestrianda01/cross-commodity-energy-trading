@@ -24,7 +24,8 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 
     st.subheader("Price Heatmap — Daily Returns")
     pivot = prices.pivot(index="commodity_key", columns="date", values="price_eur_mwh")
-    returns = pivot.pct_change(fill_method=None).iloc[:, -20:]
+    log_rets = np.log(pivot / pivot.shift(1, axis=1)).iloc[:, -20:]
+    returns = log_rets.clip(lower=-1.0, upper=1.0)
 
     fig = px.imshow(
         returns,
@@ -36,7 +37,8 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     st.plotly_chart(fig, width="stretch")
 
     st.subheader("Normalized Price Chart (Index = 100 at 2022-01-01)")
-    norm = pivot.div(pivot.iloc[:, 0], axis=0) * 100
+    first_valid = pivot.bfill(axis=1).iloc[:, 0]
+    norm = pivot.div(first_valid, axis=0) * 100
     fig2 = px.line(norm.T)
     fig2.update_layout(
         height=350, margin=dict(l=10, r=10, t=10, b=10),
