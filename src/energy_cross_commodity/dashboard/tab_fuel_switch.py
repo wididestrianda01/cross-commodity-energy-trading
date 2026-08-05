@@ -2,6 +2,7 @@
 
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 import duckdb
 from omegaconf import DictConfig
@@ -80,4 +81,50 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             f"Current pass-through: β = {current_beta:.2f}. "
             f"β = 0.85 means a €10/t carbon increase flows through as €8.50/MWh in German power. "
             "This is the carbon-price-to-power-price transmission mechanism."
+        )
+    st.subheader("3-2-1 Crack Spread — Seasonal Decomposition")
+    crack_prices = conn.execute("""
+        SELECT date,
+            MAX(CASE WHEN commodity_key='RBOB' THEN price_native END) AS rbob,
+            MAX(CASE WHEN commodity_key='GASOIL' THEN price_native END) AS gasoil,
+            MAX(CASE WHEN commodity_key='BRENT' THEN price_native END) AS brent
+        FROM fact_prices
+        WHERE commodity_key IN ('RBOB','GASOIL','BRENT')
+        GROUP BY date
+        HAVING rbob IS NOT NULL AND gasoil IS NOT NULL AND brent IS NOT NULL
+        ORDER BY date
+    """).df()
+
+    if len(crack_prices) < 504:
+        st.info("Insufficient crack spread history for seasonal decomposition (need ~2 years).")
+    else:
+        from energy_cross_commodity.spreads.crack_spread import compute_321_crack, decompose_crack_spread
+        import pandas as pd
+
+        crack = compute_321_crack(
+            crack_prices["rbob"].values,
+            crack_prices["gasoil"].values,
+            crack_prices["brent"].values,
+        )
+        dates = pd.DatetimeIndex(crack_prices["date"].values)
+        decomp = decompose_crack_spread(dates, crack, period=252)
+
+        fig_seas = make_subplots(rows=3, cols=1, shared_xaxes=True,
+            subplot_titles=["Trend", "Seasonal (Annual Pattern)", "Residual"],
+            vertical_spacing=0.08)
+
+        fig_seas.add_trace(go.Scatter(x=dates, y=decomp["trend"], mode="lines",
+            line=dict(color="#00003C", width=1.5), name="Trend"), row=1, col=1)
+        fig_seas.add_trace(go.Scatter(x=dates, y=decomp["seasonal"], mode="lines",
+            line=dict(color="#2E7D6F", width=1), name="Seasonal"), row=2, col=1)
+        fig_seas.add_hline(y=0, line_dash="dash", line_color="#6B6B6B", line_width=0.5, row=2, col=1)
+        fig_seas.add_trace(go.Scatter(x=dates, y=decomp["resid"], mode="lines",
+            line=dict(color="#6B6B6B", width=0.8), name="Residual"), row=3, col=1)
+        fig_seas.add_hline(y=0, line_dash="dash", line_color="#6B6B6B", line_width=0.5, row=3, col=1)
+        fig_seas.update_layout(height=500, margin=dict(l=10,r=10,t=30,b=10), showlegend=False)
+        st.plotly_chart(fig_seas, use_container_width=True)
+        st.caption(
+            "STL decomposition of the 3-2-1 crack spread. "
+            "The seasonal component captures predictable annual patterns — summer gasoline demand, winter heating oil. "
+            "The residual highlights structural breaks like COVID 2020 and the 2022 energy crisis."
         )
