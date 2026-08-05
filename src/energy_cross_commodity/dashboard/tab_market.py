@@ -61,3 +61,26 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     fig3.add_trace(go.Bar(x=spreads_df["date"], y=negative, name="Coal Favored", marker_color="#C44536"), row=1, col=3)
     fig3.update_layout(height=350, showlegend=False, margin=dict(l=10, r=10, t=30, b=10))
     st.plotly_chart(fig3, width="stretch")
+
+    with st.expander("Methodology & Interpretation"):
+        st.markdown("""
+**Price heatmap** shows the last 20 trading days of daily returns for each commodity.
+Red cells indicate upward moves (>2%), green cells indicate downward moves (<-2%),
+white cells show flat trading. This is a desk-level morning view — a trader sees at a
+glance which commodities are moving and in which direction.
+
+**Normalized price chart** rebases all commodities to 100 at January 2022. The visual
+separation between lines reveals relative performance: the 2022 gas crisis shows TTF
+diverging sharply from Brent and power, while the post-2023 convergence reflects market
+normalization. Commodities that trade in different native units (USD/bbl, EUR/MWh,
+EUR/tCO2) become directly comparable after normalization.
+
+**Spread dashboard** shows the three core trading signals:
+- *Clean Spark Spread* (gas-to-power margin): power revenue minus gas fuel cost minus
+  carbon cost. Positive → gas plants are profitable.
+- *Clean Dark Spread* (coal-to-power margin): same calculation for coal. The carbon
+  cost component is roughly 2.5× larger for coal due to higher emissions intensity.
+- *Fuel-switching signal* (CSS − CDS): green bars = gas favored, red bars = coal favored.
+  The August 2022 gas crisis produced a sustained coal-favored signal as gas became
+  uneconomical despite high carbon costs.
+""")

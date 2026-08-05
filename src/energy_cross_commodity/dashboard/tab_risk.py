@@ -208,3 +208,41 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     pc2.metric("Sharpe Ratio", f"{sharpe:.2f}")
     pc3.metric("Max Drawdown", f"{max_dd:.1%}")
     pc4.metric("% Positive Days", f"{pct_pos:.0f}%")
+
+    with st.expander("Methodology & Interpretation"):
+        st.markdown(f"""
+**Portfolio VaR decomposition** uses Euler-allocated component VaR from 10,000 t-copula
+Monte Carlo draws. Each position's bar represents its marginal contribution to total
+portfolio risk. The sum of component VaRs equals the total diversified VaR (within 5%
+tolerance). This answers the desk-level question: "which position should I cut to reduce
+risk by €X?"
+
+The model pipeline: (1) univariate GARCH(1,1) with Student-t errors fitted per commodity
+→ standardized residuals; (2) multivariate t-copula fitted via maximum likelihood on the
+standardized residuals → correlation matrix R and degrees of freedom ν; (3) 10,000
+correlated draws from the fitted copula, mapped to returns through the inverse normal CDF
+scaled by historical volatility; (4) portfolio P&L = Σ(positions × simulated returns);
+(5) VaR₉₅ = −Q₀.₀₅(P&L), ES₉₇.₅ = −E[P&L | P&L ≤ −VaR₉₇.₅].
+
+**VaR backtesting** evaluates the model's predictive accuracy. The rolling 252-day 95% VaR
+is compared against realized next-day P&L. The Kupiec (1995) proportion-of-failures test
+asks: is the observed breach rate consistent with the model's 5% expected rate? A p-value
+> 0.05 means we cannot reject the null hypothesis of correct coverage. The current backtest
+shows approximately 5% breaches with p ≈ 0.84 — the model is well-calibrated.
+
+**Stress scenarios** apply predefined price shocks and correlation overrides to the
+current portfolio. Three scenarios are modeled:
+- *Gas crisis*: TTF +300%, power +200%, carbon +50%, Brent +30%. All correlations → 0.90.
+  Models a Nord Stream-style supply shock.
+- *Global recession*: Brent −40%, TTF −30%, power −25%, carbon −20%. All correlations → 0.90.
+  Models a demand-destruction event where all risk assets sell off together.
+- *Energy transition*: Carbon +200% (€150/t), coal −40%, Brent −30%. Gas-power correlation → 0.10.
+  Models a structural shift where carbon policy drives fuel switching and renewables decouple
+  gas from power prices.
+
+**Portfolio P&L trajectory** shows the cumulative profit/loss of the hypothetical MMP-style
+book (long Brent, long TTF, long carbon; short crack spread, short spark spread).
+Performance metrics (Sharpe ratio, maximum drawdown, percent positive days) are computed
+on daily P&L. The annotations highlight how the portfolio performed through the key market
+events of 2020-2024.
+""")

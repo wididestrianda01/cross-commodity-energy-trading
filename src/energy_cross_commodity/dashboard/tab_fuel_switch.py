@@ -172,3 +172,37 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             "When actual carbon price > break-even, gas generation is cheaper than coal. "
             "The widening gap since 2021 reflects structural coal-to-gas switching driven by carbon policy."
         )
+
+    with st.expander("Methodology & Interpretation"):
+        st.markdown("""
+**Fuel-switching signal** = Clean Spark Spread − Clean Dark Spread. When the signal is
+above +5 EUR/MWh, gas generation is the cheaper marginal fuel and tends to set the
+power price. Below −5 EUR/MWh, coal is cheaper. The ±5 EUR/MWh band is the switching
+zone where small price changes can flip the marginal fuel. The August 2022 gas crisis
+produced roughly 60 consecutive trading days of coal-favored signal as TTF spiked to
+over 300 EUR/MWh.
+
+**Carbon pass-through rate** measures how carbon price changes flow through to German
+power prices. It is estimated as the rolling 60-day regression coefficient β in:
+Δlog(P_power) = α + β × Δlog(P_carbon) + ε. The empirical range is 0.80–1.00, meaning
+a €10/t carbon increase raises power prices by €8–10/MWh. The pass-through is near
+complete because carbon is a marginal cost passed directly to consumers under the EU
+ETS — generators do not absorb carbon costs; they pass them through.
+
+**Seasonal decomposition** uses STL (Seasonal-Trend decomposition with LOESS) on the
+3-2-1 crack spread with a period of 252 trading days. The trend component captures
+structural shifts (the 2022 energy crisis spike, post-2023 normalization). The seasonal
+component isolates the predictable annual pattern — stronger crack spreads in summer
+(gasoline demand) and winter (heating oil demand). The residual captures noise and
+one-off events (COVID 2020, the March 2022 spike). If the seasonal component has
+consistent amplitude, the pattern is stable and tradable; if it varies, structural
+change is occurring.
+
+**Break-even carbon price** solves CSS = CDS for P_carbon: the carbon price at which
+gas and coal generation are equally profitable on a clean basis. The formula:
+P_BE = (P_gas/η_gas − P_coal/η_coal) / (ε_coal − ε_gas)
+where η is thermal efficiency (0.55 gas, 0.38 coal) and ε is the emission factor
+(0.37 gas, 0.90 coal tCO2/MWh). When the actual EUA price exceeds the break-even,
+gas is structurally cheaper despite its higher fuel cost — carbon policy has made gas
+the preferred marginal fuel in Germany since approximately 2021.
+""")

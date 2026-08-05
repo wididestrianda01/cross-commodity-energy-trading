@@ -161,3 +161,32 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             "HIGH regimes coincide with crises — diversification fails when you need it most. "
             f"Aug 2022 classified as HIGH (norm > {hi:.1f})."
         )
+
+    with st.expander("Methodology & Interpretation"):
+        st.markdown("""
+**Rolling correlation time series** tracks the 60-day Pearson correlation between TTF
+natural gas and German day-ahead power. During normal market conditions (2019, 2023-2024),
+the correlation is moderate (ρ ≈ 0.3–0.4). During the August 2022 gas crisis, it rose
+above 0.9 as gas prices dominated all other cost factors in the merit order. The 2023
+decoupling reflects increased renewable penetration structurally reducing the gas-to-power
+pass-through — a key energy transition dynamic.
+
+**Correlation matrix** shows the N×N pairwise correlations for the selected 60-day window.
+The interactive date picker lets you explore how the correlation structure evolved.
+Slide to August 2022 to see the matrix go uniformly dark red (correlations → 1.0) as all
+commodities moved together during the crisis. Slide to late 2023 to see the gas-power
+cell return to blue as the markets decoupled.
+
+**Tail dependence plot** compares the bivariate t-copula 95% contour (solid navy) against
+the Gaussian 95% contour (dashed red). Both use the same linear correlation ρ, but the
+t-copula accounts for heavy tails (degrees of freedom ν ≈ 5). The t-copula ellipse is
+wider in the joint-tail regions, capturing the empirical observation that extreme moves
+in TTF are accompanied by extreme moves in German power. A Gaussian model assigns
+near-zero probability to these joint-tail events.
+
+**Correlation regime detection** computes the Frobenius norm (√Σᵢⱼ ρᵢⱼ²) of the rolling
+correlation matrix and classifies each time point into LOW (<33rd percentile), NORMAL,
+or HIGH (>67th percentile) regimes. HIGH regimes are crisis periods where all correlations
+converge toward 1.0 — diversification fails precisely when it is most needed. The
+August 2022 gas crisis is correctly classified as HIGH.
+""")
