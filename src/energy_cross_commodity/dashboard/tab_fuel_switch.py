@@ -128,3 +128,47 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             "The seasonal component captures predictable annual patterns — summer gasoline demand, winter heating oil. "
             "The residual highlights structural breaks like COVID 2020 and the 2022 energy crisis."
         )
+
+    st.subheader("Break-Even Carbon Price")
+    be_df = spreads_df.dropna(subset=["gas", "coal", "carbon"])
+    if len(be_df) < 60:
+        st.info("Insufficient data for break-even carbon.")
+    else:
+        from energy_cross_commodity.spreads.spark_spread import compute_break_even_carbon
+        be_carbon = compute_break_even_carbon(be_df["gas"].values, be_df["coal"].values)
+        be_dates = be_df["date"].values
+
+        fig_be = go.Figure()
+        fig_be.add_trace(go.Scatter(x=be_dates, y=be_carbon, mode="lines",
+            line=dict(color="#00003C", width=1.5), name="Break-Even Carbon"))
+        fig_be.add_trace(go.Scatter(x=be_dates, y=be_df["carbon"].values, mode="lines",
+            line=dict(color="#C44536", width=1.5), name="Actual EUA Price"))
+
+        # Shade region where actual > break-even (gas favored)
+        gas_favored = be_df["carbon"].values > be_carbon
+        fig_be.add_trace(go.Scatter(
+            x=be_dates, y=np.where(gas_favored, be_df["carbon"].values, np.nan),
+            mode="none", fill="tozeroy", fillcolor="#2E7D6F", opacity=0.08,
+            name="Gas Favored (EUA > Break-Even)", showlegend=True,
+        ))
+        fig_be.add_trace(go.Scatter(
+            x=be_dates, y=np.where(~gas_favored, be_df["carbon"].values, np.nan),
+            mode="none", fill="tozeroy", fillcolor="#C44536", opacity=0.08,
+            name="Coal Favored (EUA < Break-Even)", showlegend=True,
+        ))
+
+        fig_be.update_layout(height=350, margin=dict(l=10,r=10,t=10,b=10),
+            yaxis_title="EUR/tCO2", legend=dict(orientation="h", yanchor="top", y=-0.15))
+        st.plotly_chart(fig_be, use_container_width=True)
+
+        current_be = float(be_carbon[-1]) if len(be_carbon) > 0 else np.nan
+        current_eua = float(be_df["carbon"].values[-1]) if len(be_df) > 0 else np.nan
+        be_col1, be_col2 = st.columns(2)
+        be_col1.metric("Break-Even Carbon", f"€{current_be:.1f}/t",
+            delta=f"vs Actual €{current_eua:.1f}/t",
+            delta_color="normal" if current_eua > current_be else "inverse")
+        be_col2.metric("Actual EUA", f"€{current_eua:.1f}/t")
+        st.caption(
+            "When actual carbon price > break-even, gas generation is cheaper than coal. "
+            "The widening gap since 2021 reflects structural coal-to-gas switching driven by carbon policy."
+        )
