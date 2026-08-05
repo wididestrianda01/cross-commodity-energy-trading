@@ -40,3 +40,4 @@ Thumbs.db
 
 # Poetry lock (optional — commit if you want reproducible envs)
 # poetry.lock
+.superpowers/sdd/
