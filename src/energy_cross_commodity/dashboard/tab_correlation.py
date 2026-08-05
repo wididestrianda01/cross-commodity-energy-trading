@@ -43,14 +43,15 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             name="TTF-DE_POWER Corr",
         ))
         fig_ts.add_hline(y=0, line_dash="dash", line_color="#6B6B6B", line_width=0.5)
-        # Event annotations
         for event_date, label, color in [
             ("2020-03-15", "COVID", "#6B6B6B"),
             ("2022-08-15", "Gas Crisis", "#C44536"),
             ("2023-06-01", "Normalization", "#2E7D6F"),
         ]:
-            fig_ts.add_vline(x=pd.Timestamp(event_date), line_dash="dot", line_color=color,
-                annotation_text=label, annotation_position="top left")
+            fig_ts.add_shape(type="line", x0=event_date, x1=event_date, y0=0, y1=1,
+                xref="x", yref="paper", line=dict(dash="dot", color=color, width=1))
+            fig_ts.add_annotation(x=event_date, y=1.02, xref="x", yref="paper",
+                text=label, showarrow=False, font=dict(size=10, color=color), xanchor="left")
         fig_ts.update_layout(
             height=300, margin=dict(l=10, r=10, t=10, b=10),
             yaxis_title="Correlation", xaxis_title="",

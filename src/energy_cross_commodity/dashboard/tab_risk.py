@@ -187,8 +187,10 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         ("2022-08-15", "Gas Crisis", "#C44536"),
         ("2024-01-01", "Recovery", "#2E7D6F"),
     ]:
-        fig_pnl.add_vline(x=pd.Timestamp(evt_date), line_dash="dot", line_color=color,
-            annotation_text=label, annotation_position="top left")
+        fig_pnl.add_shape(type="line", x0=evt_date, x1=evt_date, y0=0, y1=1,
+            xref="x", yref="paper", line=dict(dash="dot", color=color, width=1))
+        fig_pnl.add_annotation(x=evt_date, y=1.02, xref="x", yref="paper",
+            text=label, showarrow=False, font=dict(size=10, color=color), xanchor="left")
     fig_pnl.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10),
         yaxis_title="Cumulative P&L (EUR)")
     st.plotly_chart(fig_pnl, width="stretch")
