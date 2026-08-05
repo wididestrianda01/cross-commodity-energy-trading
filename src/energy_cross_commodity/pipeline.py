@@ -80,6 +80,51 @@ def run_carbon_ets(conn, cfg) -> None:
     if carbon_data:
         print("carbon-ets: EUA prices loaded.")
 
+def run_backtest(conn, cfg) -> None:
+    """Compute rolling copula VaR backtest and write to var_backtest table.
+
+    Fits a rolling 252-day t-copula VaR model, computes 1-day-ahead VaR 95%
+    and realized P&L for each day, and stores results in var_backtest.
+    """
+    import numpy as np
+    from energy_cross_commodity.risk.copula import fit_t_copula
+    from energy_cross_commodity.risk.var_engine import compute_rolling_var, kupiec_test
+
+    prices = conn.execute("""
+        SELECT date, commodity_key, price_native
+        FROM fact_prices WHERE date >= '2019-01-01'
+        ORDER BY date, commodity_key
+    """).df()
+    pivot = prices.pivot(index="date", columns="commodity_key", values="price_native")
+    returns = np.log(pivot / pivot.shift(1)).dropna()
+
+    positions = {k: v.notional_eur for k, v in cfg.portfolio.positions.items()}
+    available = [c for c in returns.columns if c in positions]
+    returns = returns[available]
+    positions = {c: positions[c] for c in available}
+
+    if len(available) < 1:
+        print("Backtest: no portfolio commodities available, skipping.")
+        return
+
+    print(f"Backtest: fitting rolling 252-day copula VaR for {len(available)} assets...")
+    result = compute_rolling_var(returns, positions, window=252, copula_fit_fn=fit_t_copula)
+
+    insert_df = result[["date", "realized_pnl", "var_95"]].rename(
+        columns={"realized_pnl": "pnl", "var_95": "var_estimate"}
+    )
+    conn.execute("DELETE FROM var_backtest")
+    conn.register("_bt", insert_df)
+    conn.execute("INSERT INTO var_backtest SELECT * FROM _bt")
+
+    breaches = int((insert_df["pnl"] < -insert_df["var_estimate"]).sum())
+    ktest = kupiec_test(breaches, len(insert_df), 0.95)
+    print(
+        f"Backtest: {len(insert_df)} days stored. "
+        f"{breaches} breaches (expected ~{len(insert_df)*0.05:.0f}). "
+        f"Kupiec p={ktest['p_value']:.3f}"
+    )
+
 
 def run() -> None:
     """Execute the full data pipeline: fetch, normalize, and load into DuckDB.
@@ -125,6 +170,12 @@ def run() -> None:
             print(msg, file=sys.stderr)
             conn.close()
             sys.exit(1)
+
+    # Run backtest after data is loaded
+    try:
+        run_backtest(conn, cfg)
+    except Exception as e:
+        print(f"Backtest failed (non-fatal): {e}", file=sys.stderr)
 
     # Ensure date dimension is populated
     end_date = cfg.data.end_date or "2025-12-31"
