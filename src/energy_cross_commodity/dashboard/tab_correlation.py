@@ -6,10 +6,12 @@ import plotly.graph_objects as go
 
 import streamlit as st
 import duckdb
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from scipy import stats
 import pandas as pd
 from energy_cross_commodity.risk.correlation import compute_rolling_correlation
+from energy_cross_commodity.risk.copula import fit_t_copula
+from energy_cross_commodity.risk.returns import compute_log_returns
 
 
 def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
@@ -21,7 +23,10 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     """).df()
 
     pivot = prices.pivot(index="date", columns="commodity_key", values="price_native")
-    returns = np.log(pivot / pivot.shift(1)).dropna()
+    # Displaced log returns: German power clears negative, where a plain log is undefined
+    # and would silently drop the whole row across every commodity.
+    displacements = OmegaConf.to_container(cfg.risk.price_displacement_eur, resolve=True)
+    returns = compute_log_returns(pivot, displacements).dropna()
     commodities = returns.columns.tolist()
 
     # --- Rolling Correlation Time Series ---
@@ -58,7 +63,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             yaxis=dict(range=[-1, 1]),
         )
         st.plotly_chart(fig_ts, width="stretch")
-        st.caption("Correlation spikes in crises. Aug 2022: TTF-power correlation reached 0.69. By 2023, decoupling from renewables pushed it back toward 0.12.")
+        st.caption("Daily-return correlation peaks near 0.34 in September 2022, then averages roughly zero from 2023 onward. The gas-power link is far weaker at daily frequency than at monthly or quarterly frequency (Epps effect).")
 
     # --- Interactive Date Picker + Correlation Matrix ---
     st.subheader("Correlation Matrix — Select Date")
@@ -101,9 +106,13 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             name="Daily returns",
         ))
         rho = np.corrcoef(ttf_std, power_std)[0, 1]
+        # Degrees of freedom are estimated, not assumed — a hardcoded nu would draw an
+        # ellipse for a model the panel was never fitted to.
+        pair_fit = fit_t_copula(returns[["TTF", "DE_POWER"]])
+        nu = pair_fit.df
         theta = np.linspace(0, 2*np.pi, 200)
         ex, ey = np.cos(theta), np.sin(theta)
-        scale_t = np.sqrt(stats.f.ppf(0.95, 2, 5) * 2)
+        scale_t = np.sqrt(stats.f.ppf(0.95, 2, nu) * 2)
         fig_tail.add_trace(go.Scatter(
             x=ex * scale_t, y=ey * scale_t * np.sqrt(1 - rho**2) + rho * ex * scale_t,
             mode="lines", line=dict(color="#00003C", width=2, dash="solid"),
@@ -120,7 +129,11 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             xaxis_title="TTF (standardized)", yaxis_title="German Power (standardized)",
         )
         st.plotly_chart(fig_tail, width="stretch")
-        st.caption(f"Correlation: {rho:.3f}. The t-copula ellipse (solid navy) captures tail dependence the Gaussian ellipse (dashed red) misses.")
+        st.caption(
+            f"Correlation {rho:.3f}, fitted degrees of freedom ν = {nu:.1f}. At this ν the "
+            "t-copula ellipse (solid navy) sits almost on top of the Gaussian one (dashed red) — "
+            "this pair shows little tail dependence at daily frequency. The gap widens as ν falls."
+        )
     st.subheader("Correlation Regime Detection")
     if len(avail) >= 3:
         frob = np.zeros(corr_cube.shape[2])
@@ -157,36 +170,59 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         rc1.metric("Current Regime", current_regime)
         rc2.metric("Frobenius Norm", f"{frob[-1]:.2f}")
         st.caption(
-            "Frobenius norm of the N×N correlation matrix. "
-            "HIGH regimes coincide with crises — diversification fails when you need it most. "
-            f"Aug 2022 classified as HIGH (norm > {hi:.1f})."
+            f"Frobenius norm of the {len(avail)}×{len(avail)} correlation matrix. The floor is "
+            f"√{len(avail)} ≈ {np.sqrt(len(avail)):.2f} (zero correlation everywhere) and the ceiling is "
+            f"{len(avail)} (everything moves as one). The series stays near the floor, so the "
+            f"LOW/NORMAL/HIGH split at {lo:.2f}/{hi:.2f} separates weak states from slightly less "
+            "weak ones, not calm markets from crises."
         )
 
     with st.expander("Methodology & Interpretation"):
         st.markdown("""
 **Rolling correlation time series** tracks the 60-day Pearson correlation between TTF
-natural gas and German day-ahead power. During normal market conditions (2019, 2023-2024),
-the correlation is moderate (ρ ≈ 0.3–0.4). During the August 2022 gas crisis, it rose
-to 0.69 as gas prices dominated all other cost factors in the merit order. The 2023
-decoupling reflects increased renewable penetration structurally reducing the gas-to-power
-pass-through — a key energy transition dynamic.
+natural gas and German day-ahead power, computed on displaced log returns (German prices
+clear negative, where a plain log is undefined). The series peaks near 0.34 in September
+2022, when gas dominated the merit order, and averages close to zero from 2023 onward.
+
+Read the level with care: this is a *daily-return* correlation, and it is much lower than
+the gas-power relationship measured on prices or at lower frequency. Correlation estimated
+from short-horizon returns is biased toward zero when the two series do not trade or settle
+in step — the Epps effect. Day-ahead power is fixed once daily against weather and renewable
+output, while gas trades continuously, so a large share of daily power variance is simply
+not a gas story. Aggregating returns to monthly or quarterly recovers a far stronger link.
+The near-zero daily figure is therefore a statement about measurement frequency, not
+evidence that gas has stopped setting the marginal price.
 
 **Correlation matrix** shows the N×N pairwise correlations for the selected 60-day window.
-The interactive date picker lets you explore how the correlation structure evolved.
-Slide to August 2022 to see the matrix go uniformly dark red (correlations → 1.0) as all
-commodities moved together during the crisis. Slide to late 2023 to see the gas-power
-cell return to blue as the markets decoupled.
+The interactive date picker lets you explore how the correlation structure evolved. The
+persistently strong cell is DE_POWER–NO1_POWER, two coupled power markets; the commodity
+pairs stay weak throughout. Even at the height of the August 2022 gas crisis the off-diagonal
+entries only span roughly −0.1 to 0.3 — daily returns did not collapse onto a single factor,
+which is the same frequency effect described above rather than evidence of diversification.
 
 **Tail dependence plot** compares the bivariate t-copula 95% contour (solid navy) against
-the Gaussian 95% contour (dashed red). Both use the same linear correlation ρ, but the
-t-copula accounts for heavy tails (degrees of freedom ν ≈ 5). The t-copula ellipse is
-wider in the joint-tail regions, capturing the empirical observation that extreme moves
-in TTF are accompanied by extreme moves in German power. A Gaussian model assigns
-near-zero probability to these joint-tail events.
+the Gaussian 95% contour (dashed red). Both use the same linear correlation ρ; the t-copula
+adds heavy tails through its degrees of freedom ν, which is estimated from the data rather
+than assumed. Coefficient of tail dependence λ = 2·t_{ν+1}(−√((ν+1)(1−ρ)/(1+ρ))) tends to
+zero as ν grows, so the two contours converge when the fitted ν is large.
+
+For TTF against German power the fit lands near ν ≈ 19 with ρ close to zero, which implies
+λ ≈ 0 — the ellipses nearly coincide and there is no joint-tail clustering to speak of at
+daily frequency. Counting empirical joint exceedances agrees: at the 10% level the pair
+breaches jointly on the downside slightly more often than independence predicts and on the
+upside slightly less. The t-copula still earns its place in the portfolio VaR, where the
+full nine-series panel fits a heavier ν ≈ 13 and the two power markets reach λ ≈ 0.27 —
+but that dependence lives in other pairs, not this one.
 
 **Correlation regime detection** computes the Frobenius norm (√Σᵢⱼ ρᵢⱼ²) of the rolling
 correlation matrix and classifies each time point into LOW (<33rd percentile), NORMAL,
-or HIGH (>67th percentile) regimes. HIGH regimes are crisis periods where all correlations
-converge toward 1.0 — diversification fails precisely when it is most needed. The
-August 2022 gas crisis is correctly classified as HIGH.
+or HIGH (>67th percentile) regimes. The textbook motivation is that correlations converge
+toward 1.0 in a crisis, so diversification fails precisely when it is most needed.
+
+This sample does not show that pattern, and the diagnostic is kept here because the negative
+result is the finding. The norm is bounded below by √N (zero correlation everywhere) and above
+by N; it stays close to the lower bound throughout, so the percentile thresholds end up only
+a few hundredths apart and the labels partition estimation noise rather than market states.
+August 2022 classifies as LOW, not HIGH. A crisis-correlation study on this panel needs
+lower-frequency returns, where the cross-commodity link is actually measurable.
 """)
