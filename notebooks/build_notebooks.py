@@ -31,7 +31,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy import stats as sp_stats
 
-# KTH theme colours
+# Report theme colours
 NAVY = '#00003C'
 OFFWHITE = '#FAFAFA'
 TEAL = '#2E7D6F'
@@ -329,7 +329,12 @@ Notebook 4 is designed to capture exactly this excess tail mass.
 """))
 
 NB1.append(code("""\
-log_returns = np.log(wide / wide.shift(1)).dropna()
+from energy_cross_commodity.risk.returns import compute_log_returns
+
+# Power prices clear negative in oversupply, where a plain log ratio is
+# undefined. The displacement keeps those days in the sample instead of
+# quietly dropping the most extreme observations in the series.
+log_returns = compute_log_returns(wide, {"DE_POWER": 100.0, "NP_SYS": 100.0})
 
 n_cols = 3
 n_rows = 3
@@ -1194,7 +1199,9 @@ from energy_cross_commodity.risk.correlation import (
     compute_rolling_correlation, analyze_dependence, fit_dcc_garch,
 )
 from energy_cross_commodity.risk.copula import fit_t_copula
+from energy_cross_commodity.risk.returns import compute_log_returns
 from energy_cross_commodity.utils.config import load_config
+from omegaconf import OmegaConf
 
 cfg = load_config()
 DB_PATH = str(Path.cwd().parent / cfg.data.db_path)
@@ -1205,7 +1212,12 @@ prices = conn.execute(
 ).df()
 
 pivot = prices.pivot(index="date", columns="commodity_key", values="price_native")
-returns = np.log(pivot / pivot.shift(1)).dropna()
+
+# Displaced log returns. A plain log ratio is undefined on the days power
+# clears below zero, and pandas would drop them as NaN — silently deleting the
+# exact oversupply days a correlation study needs to see.
+displacements = OmegaConf.to_container(cfg.risk.price_displacement_eur, resolve=True)
+returns = compute_log_returns(pivot, displacements)
 
 CORE = ["BRENT", "TTF", "EUA", "DE_POWER"]
 core_rets = returns[[c for c in CORE if c in returns.columns]]
@@ -1734,18 +1746,23 @@ captures tail dependence that a Gaussian correlation matrix would miss, while
 the empirical residual quantiles avoid imposing a parametric shape on the
 marginal tails.
 
-The model is backtested using a rolling 250-day window: at each date, a
-t-copula is fitted on the trailing 250 days, the 95% VaR is simulated, and
-the next day's realised P&L is compared against the forecast. The Kupiec
-(1995) likelihood ratio test evaluates whether the observed breach rate
-matches the expected 5%. A Christoffersen (1998) conditional coverage test
-checks whether breaches cluster — a sign that the model fails exactly when it
-is needed most.
+The model is backtested on a rolling 500-day window: at each date the GARCH
+filters and the t-copula are re-estimated on the trailing window, VaR is
+simulated from that fit, and the next day's realised P&L is compared against
+the forecast. The Kupiec (1995) likelihood ratio test evaluates whether the
+observed breach rate matches the expected 5%. A Christoffersen (1998)
+conditional coverage test checks whether breaches cluster — a sign that the
+model fails exactly when it is needed most. The Basel supervisory traffic
+light is reported separately, on the 99% series over the most recent 250 days,
+because that is the only sample it is defined for.
 
-Finally, three stress scenarios — a gas supply crisis, a global recession,
-and an accelerated energy transition — are applied to the portfolio with
-correlation-aware copula simulation. Each scenario produces a P&L waterfall
-that shows which positions drive the loss (or gain) under that regime.
+Finally, three stress scenarios — a gas supply crisis, a global recession, and
+an accelerated energy transition — are applied as deterministic full
+revaluations. Every risk factor moves by its stated shock and the book is
+re-priced, so each scenario produces a P&L waterfall showing which positions
+drive the loss (or gain) under that regime. A separate stressed-VaR run then
+re-simulates the distribution under a crisis correlation matrix, isolating
+what correlation breakdown alone costs.
 
 ### Regulatory Context
 
@@ -1807,21 +1824,34 @@ The Basel Committee defines a traffic-light system for backtesting exceptions:
 | Yellow | 5–9 | 3.40–3.85 | Model possibly flawed |
 | Red | 10+ | 4.00 | Model almost certainly flawed |
 
-At the 99% confidence level, the expected number of breaches is 2.5 per 250
-days. The 95% VaR used here expects 12.5 breaches per 250 days — the
-proportional equivalent. The Kupiec and Christoffersen tests provide formal
-statistical backing for these zone classifications.
+The zones are calibrated for one setup only: 99% one-day VaR over 250 trading
+days, where the expected breach count is 2.5. They are boundaries of a
+binomial test at that specific count, not a proportional scale, so they cannot
+be rescaled to the 95% level by multiplying through. This notebook therefore
+applies the traffic light to the 99% series alone and assesses the 95% series
+with Kupiec and Christoffersen, which are defined at any confidence level.
 """))
 
 NB4.append(code(COMMON_IMPORTS + """
-from energy_cross_commodity.risk.copula import fit_t_copula
+from omegaconf import OmegaConf
+
+from energy_cross_commodity.risk.portfolio import expand_spread_positions
+from energy_cross_commodity.risk.returns import compute_log_returns
 from energy_cross_commodity.risk.var_engine import (
-    compute_portfolio_var, compute_rolling_var, kupiec_test,
+    basel_traffic_light, christoffersen_test, compute_portfolio_var,
+    compute_rolling_var, fit_fhs_copula, kupiec_test,
 )
-from energy_cross_commodity.risk.scenarios import SCENARIOS, run_scenario
+from energy_cross_commodity.risk.scenarios import SCENARIOS, run_scenario, stressed_copula
 from energy_cross_commodity.utils.config import load_config
 
 cfg = load_config()
+
+# Every simulation below draws from this seed. Monte Carlo VaR is a random
+# estimate: left unseeded, the 95% figure moved by roughly 2% between runs on
+# identical data and the Basel zone flipped between four and six breaches. A
+# risk number a reviewer cannot reproduce is not a risk number.
+SEED = 42
+
 DB_PATH = str(Path.cwd().parent / cfg.data.db_path)
 conn = duckdb.connect(DB_PATH)
 
@@ -1830,17 +1860,27 @@ prices = conn.execute(
 ).df()
 
 pivot = prices.pivot(index="date", columns="commodity_key", values="price_native")
-returns = np.log(pivot / pivot.shift(1)).dropna()
 conn.close()
 
-SYNTHETIC = {"CRACK_3_2_1", "SPARK_SPREAD"}
-all_positions_raw = {k: v.notional_eur for k, v in cfg.portfolio.positions.items()}
-positions = {k: v for k, v in all_positions_raw.items() if k not in SYNTHETIC}
+# Spreads are not tradeable risk factors: a 3-2-1 crack is 3 bbl of crude in
+# against 2 bbl gasoline and 1 bbl distillate out, and a spark spread is power
+# against heat-rate-scaled gas. Each spread is replaced by its legs so the
+# covariance structure is estimated on the factors that actually have prices.
+positions = expand_spread_positions(
+    {k: v.notional_eur for k, v in cfg.portfolio.positions.items()},
+    OmegaConf.to_container(cfg.portfolio.spread_legs, resolve=True),
+)
 
-aligned_cols = [c for c in returns.columns if c in positions]
-aligned_rets = returns[aligned_cols]
+aligned_cols = [c for c in pivot.columns if c in positions]
+positions = {c: positions[c] for c in aligned_cols}
 
-print(f"Portfolio positions: {positions}")
+# Power clears negative in oversupply, so plain log returns would drop those
+# days as NaN. A displacement k gives ln((P+k)/(P_prev+k)), keeping the sign
+# and the magnitude of the move while staying defined below zero.
+displacements = OmegaConf.to_container(cfg.risk.price_displacement_eur, resolve=True)
+aligned_rets = compute_log_returns(pivot[aligned_cols], displacements)
+
+print(f"Risk-factor exposures: {positions}")
 print(f"Aligned commodities: {aligned_cols}")
 print(f"Returns shape: {aligned_rets.shape}")
 """))
@@ -1933,8 +1973,13 @@ it get?" but "how bad will it be, on average, when it gets that bad?"
 """))
 
 NB4.append(code("""\
-copula = fit_t_copula(aligned_rets)
-pv = compute_portfolio_var(aligned_rets, positions, copula)
+# The copula is fitted on GARCH standardised residuals, not on raw returns.
+# Raw returns carry the volatility cycle, which inflates measured dependence;
+# residuals isolate the shock-level co-movement that the FHS step resamples.
+copula, garch_fits = fit_fhs_copula(aligned_rets)
+pv = compute_portfolio_var(
+    aligned_rets, positions, copula, garch_fits=garch_fits, seed=SEED
+)
 
 print(f"Copula ν:    {copula.df:.2f}")
 print(f"Portfolio VaR 95% (1-day):  EUR {pv.var_95:,.0f}")
@@ -2013,18 +2058,31 @@ for name, cv in sorted(comp_var.items(), key=lambda x: abs(x[1]), reverse=True):
     pct = cv / pv.var_95 * 100 if pv.var_95 > 0 else 0
     print(f"  {name:12s}: EUR {cv:>10,.0f}  ({pct:>+6.1f}%)")
 
+# Euler components sum to total VaR by construction, so the check below is on
+# the identity, not a diversification measure — that comparison needs
+# standalone VaRs and is done in section 9.
+comp_sum = sum(comp_var.values())
 sum_abs_comp = sum(abs(v) for v in comp_var.values())
-div_benefit = (sum_abs_comp - pv.var_95) / sum_abs_comp * 100
-print(f"\\nSum of absolute components: EUR {sum_abs_comp:,.0f}")
-print(f"Diversification benefit: {div_benefit:.1f}% reduction")
+hedge_offset = (sum_abs_comp - comp_sum) / sum_abs_comp * 100
+print(f"\\nSum of components:  EUR {comp_sum:,.0f}  (total VaR EUR {pv.var_95:,.0f})")
+print(f"Euler residual:     EUR {comp_sum - pv.var_95:,.0f}  (simulation noise)")
+print(f"\\nSum of |components|: EUR {sum_abs_comp:,.0f}")
+print(f"Risk-reducing legs offset {hedge_offset:.1f}% of gross contribution —")
+print(f"the negative components are positions that pay when the book loses.")
 """))
 
 NB4.append(md("""\
 ## 5. Rolling VaR Backtest
 
-A 250-day rolling window backtest: at each date, a t-copula is fitted on the
-trailing 250 days, the 95% VaR is simulated, and the estimate is compared
-with the next day's realised P&L.
+A rolling-window backtest. At each date the GARCH models and the t-copula are
+re-estimated on the trailing window only, VaR is simulated from that fit, and
+the estimate is compared with the *next* day's realised P&L. No information
+from the scored day enters its own forecast.
+
+The window is 500 trading days — roughly two years. GARCH(1,1) with Student-t
+errors has five parameters and the filtering step reads a 1-in-20 empirical
+residual quantile, so a shorter window gives unstable volatility persistence
+and a tail estimate read off two or three observations.
 
 ### Kupiec Test (1995)
 
@@ -2051,24 +2109,31 @@ independence components, following a $\\chi^2(2)$ distribution.
 
 ### Traffic-Light Interpretation
 
-For a 250-day backtest at the 95% level, the expected breach count is 12.5:
+The Basel traffic light is a supervisory backtesting scale, and it is defined
+for one specific setup: the **99%** one-day VaR over the **most recent 250**
+trading days. The zones are not a general-purpose scale and do not transfer to
+other confidence levels, so they are applied here only to the 99% series.
 
-| Breaches | Zone | Assessment |
-|----------|------|------------|
-| 0–7 | Green | Model well-calibrated |
-| 8–17 | Yellow | Acceptable, monitor |
-| 18+ | Red | Model mis-specified — recalibrate |
+| Breaches in 250 days | Zone | Supervisory consequence |
+|----------------------|------|--------------------------|
+| 0–4 | Green | No capital multiplier add-on |
+| 5–9 | Yellow | Multiplier increases with breach count |
+| 10+ | Red | Model presumed deficient |
+
+The 95% series is assessed with Kupiec and Christoffersen only, where the
+expected breach rate is 5% by construction.
 """))
 
 NB4.append(code("""\
-ROLLING_WINDOW = 250
-roll_df = compute_rolling_var(aligned_rets, positions, ROLLING_WINDOW, copula_fit_fn=fit_t_copula)
+ROLLING_WINDOW = int(cfg.risk.rolling_window)
+roll_df = compute_rolling_var(aligned_rets, positions, ROLLING_WINDOW, seed=SEED)
 
 roll_df["breach"] = roll_df["realized_pnl"] < -roll_df["var_95"]
 breach_count = int(roll_df["breach"].sum())
 total_obs = len(roll_df)
 breach_rate = breach_count / total_obs
 kupiec = kupiec_test(breach_count, total_obs, 0.95)
+christoffersen = christoffersen_test(roll_df["breach"].to_numpy(), 0.95)
 
 fig4 = go.Figure()
 fig4.add_trace(go.Scatter(
@@ -2088,11 +2153,19 @@ if len(breaches) > 0:
         name=f"Breaches ({breach_count})",
     ))
 
-zone = "GREEN" if breach_count <= 7 else ("YELLOW" if breach_count <= 17 else "RED")
+# The Basel zone is read off the 99% series over the last 250 days only —
+# that is the sample the supervisory scale is written for.
+last_250 = roll_df.tail(250)
+basel_breaches = int((last_250["realized_pnl"] < -last_250["var_99"]).sum())
+zone = basel_traffic_light(basel_breaches)
 fig4.add_annotation(
     xref="paper", yref="paper", x=0.02, y=0.95,
-    text=f"Breaches: {breach_count}/{total_obs} ({breach_rate:.1%}) | Kupiec p={kupiec['p_value']:.3f} | Zone: {zone}",
-    showarrow=False, font=dict(color=GRAY, size=11),
+    text=(
+        f"95% breaches: {breach_count}/{total_obs} ({breach_rate:.1%}) | "
+        f"Kupiec p={kupiec['p_value']:.3f} | Christoffersen CC p={christoffersen['p_cc']:.3f}<br>"
+        f"Basel (99%, last 250d): {basel_breaches} breaches, {zone} zone"
+    ),
+    showarrow=False, align="left", font=dict(color=GRAY, size=11),
 )
 
 fig4.update_layout(
@@ -2104,40 +2177,46 @@ fig4.update_layout(
 )
 fig4.show()
 
-print(f"Breach count:      {breach_count} / {total_obs}")
-print(f"Breach rate:       {breach_rate:.3%}")
-print(f"Expected (95% CI): 5.00%")
-print(f"Kupiec LR stat:    {kupiec['lr_stat']:.3f}")
-print(f"Kupiec p-value:    {kupiec['p_value']:.4f}")
-print(f"Traffic-light zone: {zone}")
-print(f"Model assessment:  {'PASS' if kupiec['p_value'] > 0.05 else 'FAIL — model mis-specified'}")
+print(f"Breach count:           {breach_count} / {total_obs}")
+print(f"Breach rate:            {breach_rate:.3%}  (expected 5.000%)")
+print(f"Kupiec LR stat:         {kupiec['lr_stat']:.3f}")
+print(f"Kupiec p-value:         {kupiec['p_value']:.4f}")
+print(f"Christoffersen LR_ind:  {christoffersen['lr_ind']:.3f}  p={christoffersen['p_ind']:.4f}")
+print(f"Christoffersen LR_cc:   {christoffersen['lr_cc']:.3f}  p={christoffersen['p_cc']:.4f}")
+print(f"Basel zone (99%, 250d): {zone}  ({basel_breaches} breaches)")
+
+# Conditional coverage is the binding test: it rejects both a wrong breach
+# count and breaches that arrive in clusters.
+verdict = "PASS" if christoffersen["p_cc"] > 0.05 else "REJECT at 5%"
+print(f"Conditional coverage:   {verdict}")
 """))
 
 NB4.append(md("""\
 ## 6. Stress Scenario P&L
 
 Three macro scenarios, calibrated to historical events and policy
-trajectories, applied with correlation-aware copula simulation:
+trajectories. Each is a set of simultaneous price shocks:
 
 - **Nord Stream Zero**: Russian gas supply disappears. TTF spikes 300%, power
-  follows (+200%), carbon rises on fuel-switching to coal (+50%). Gas-power
-  correlation approaches 1.0.
-- **Global Recession**: Demand destruction across all commodities. Risk-off
-  convergence — all correlations shift toward 0.90. Brent −40%, TTF −40%,
-  carbon −20%.
+  follows (+200%), carbon rises on fuel-switching to coal (+50%).
+- **Global Recession**: Demand destruction across all commodities. Brent −40%,
+  TTF −40%, carbon −20%.
 - **Energy Transition**: Carbon at €150/t (Fit-for-55 trajectory). Coal
   destroyed (−50%). Renewables cannibalise power prices (−10%). Oil demand
-  structurally lower (−30%). Gas-power correlation falls to 0.10 as
-  renewables decouple the relationship.
+  structurally lower (−30%).
 
-Each scenario is run through the copula engine with a shocked correlation
-matrix specific to that regime. The P&L waterfall decomposes the total impact
-by position.
+Each scenario is a **deterministic full revaluation**: every risk factor is
+moved by its stated shock and the book is re-priced. Correlation plays no part
+in the P&L — the joint move is prescribed by the scenario, not sampled — so
+the waterfall below decomposes a single deterministic outcome by position.
+
+Correlation matters for the *probabilistic* companion question: how much VaR
+the book would carry if the stressed regime persisted. That is answered
+separately in section 6.5 by re-simulating VaR under a stressed copula.
 """))
 
 NB4.append(code("""\
 scenario_names = ["gas_crisis", "recession", "energy_transition"]
-current_prices = {c: float(pivot[c].iloc[-1]) for c in pivot.columns if c in positions}
 
 fig5 = make_subplots(
     rows=1, cols=3,
@@ -2147,10 +2226,7 @@ fig5 = make_subplots(
 
 for idx, s_name in enumerate(scenario_names, start=1):
     scenario = SCENARIOS[s_name]
-    result = run_scenario(
-        positions, scenario, current_prices,
-        copula=copula, commodities=list(aligned_rets.columns),
-    )
+    result = run_scenario(positions, scenario)
     items = list(result.pnl_by_position.keys())
     values = list(result.pnl_by_position.values())
 
@@ -2166,7 +2242,7 @@ for idx, s_name in enumerate(scenario_names, start=1):
     ), row=1, col=idx)
 
 fig5.update_layout(
-    title="Stress Scenario P&L — Correlation-Aware",
+    title="Stress Scenario P&L — Deterministic Full Revaluation",
     height=420, margin=dict(l=30, r=30, t=60, b=40),
 )
 fig5.show()
@@ -2174,9 +2250,64 @@ fig5.show()
 print("Scenario P&L summary:")
 for s_name in scenario_names:
     s = SCENARIOS[s_name]
-    result = run_scenario(positions, s, current_prices,
-                          copula=copula, commodities=list(aligned_rets.columns))
+    result = run_scenario(positions, s)
     print(f"  {s.name:30s}: EUR {result.total_pnl:>12,.0f}")
+"""))
+
+NB4.append(md("""\
+## 6.5 Stressed VaR — Where Correlation Does Matter
+
+The scenarios above answer "what if these exact moves happen". The related
+question a risk committee asks is "how much risk would the book carry if the
+stressed regime persisted". That is a distributional question, and it is where
+the dependence structure bites.
+
+Here the fitted t-copula correlation matrix is pushed toward crisis levels —
+all pairwise correlations shifted toward 0.90, the risk-off convergence seen
+in 2008 and in March 2020 — while the marginal GARCH filters are left
+untouched. The difference between the two VaR numbers isolates the effect of
+correlation alone, with no change in individual volatilities.
+
+The sign of that difference is not obvious in advance, and it is worth being
+precise about why. For a long-only book, convergence unambiguously raises
+risk: everything falls together. This book is not long-only. The spread legs
+are deliberately opposed — long crude against short products, long gas against
+short power — and for an offsetting pair, *higher* correlation means the hedge
+works better. Whether stressed VaR rises or falls depends on which effect
+dominates, so read the number below rather than assuming the direction.
+"""))
+
+NB4.append(code("""\
+crisis_copula = stressed_copula(copula, list(aligned_rets.columns), "all_to_one")
+
+# Same seed as the base run. Both books are revalued along the *same* random
+# draws, so the two VaR numbers share their Monte Carlo error and it cancels in
+# the difference. Comparing two independently seeded runs would leave a gap of
+# simulation noise larger than the correlation effect being measured.
+pv_stressed = compute_portfolio_var(
+    aligned_rets, positions, crisis_copula, garch_fits=garch_fits, seed=SEED
+)
+
+delta = pv_stressed.var_99 - pv.var_99
+print(f"Base 99% VaR:      EUR {pv.var_99:>12,.0f}")
+print(f"Stressed 99% VaR:  EUR {pv_stressed.var_99:>12,.0f}")
+print(f"Correlation effect:EUR {delta:>12,.0f} ({delta / pv.var_99:+.1%})")
+print()
+direction = "raises" if delta > 0 else "lowers"
+print(f"Pushing every pairwise correlation to 0.90 {direction} VaR on this book.")
+"""))
+
+NB4.append(md("""\
+The hedge effect wins, and by a wide margin: forcing every pair to 0.90 cuts
+99% VaR by roughly a third. That is the correct answer for this book, and it
+carries a warning a long-only reading would miss. **Convergence is not this
+portfolio's correlation risk — divergence is.** The crack and spark spreads
+are hedges only for as long as their legs keep moving together; the shock that
+hurts here is refining margins or the gas-to-power link decoupling, which
+widens the spread rather than compressing it. A stress library built solely
+from "everything correlates to one" would score this book as safe under
+precisely the regime it is built to survive, and stay silent on the regime
+that breaks it.
 """))
 
 NB4.append(md("""\
@@ -2187,7 +2318,7 @@ is the difference between a model user and a model believer. The key
 limitations of this framework:
 
 1. **Estimation error.** The copula degrees of freedom $\\nu$ and correlation
-   matrix $R$ are estimated with error. A 250-day window is a modest sample
+   matrix $R$ are estimated with error. A 500-day window is a modest sample
    for a multivariate model with four or more assets. Bayesian or shrinkage
    estimators could reduce estimation error at the cost of additional
    complexity.
@@ -2226,53 +2357,67 @@ proof-of-concept of that monitoring process.
 """))
 
 NB4.append(code("""\
-# Quantify diversification benefit: compare t-copula vs standalone VaR
+# Quantify diversification benefit: portfolio VaR vs the sum of standalone VaRs.
+# A single-leg book has no dependence structure to estimate, so the copula is
+# None here — fitting one on a single series would be meaningless.
 standalone_vars = {}
 for col in aligned_cols:
     single_rets = aligned_rets[[col]]
     single_pos = {col: positions[col]}
-    single_copula = fit_t_copula(single_rets)
-    single_pv = compute_portfolio_var(single_rets, single_pos, single_copula, confidence=[0.95])
+    # Same GARCH filter as the portfolio run, so the comparison isolates
+    # dependence rather than mixing in a different volatility model.
+    single_pv = compute_portfolio_var(
+        single_rets, single_pos, None, confidence=[0.95],
+        garch_fits={col: garch_fits[col]}, seed=SEED,
+    )
     standalone_vars[col] = single_pv.var_95
 
 sum_standalone = sum(standalone_vars.values())
 div_pct = (sum_standalone - pv.var_95) / sum_standalone * 100
 
-print("Standalone VaR 95% contributions:")
+print("Standalone VaR 95% by risk factor:")
 for k, v in standalone_vars.items():
-    print(f"  {k:12s}: EUR {v:>12,.0f}")
-print(f"\\nSum of standalone VaRs:   EUR {sum_standalone:>12,.0f}")
+    print(f"  {k:12s}: EUR {v:>12,.0f}  (exposure EUR {positions[k]:>13,.0f})")
+print(f"\\nSum of standalone VaRs:    EUR {sum_standalone:>12,.0f}")
 print(f"Portfolio VaR (t-copula):  EUR {pv.var_95:>12,.0f}")
-print(f"Diversification reduction:  {div_pct:.1f}%")
-print(f"\\nThe short spread positions reduce portfolio VaR by approximately {div_pct:.0f}%")
-print(f"relative to the sum of standalone position risks. This is the structural")
-print(f"hedge benefit of an integrated multi-commodity trading book.")
+print(f"Diversification benefit:   {div_pct:.1f}%")
+print(f"\\nTwo effects drive the gap. Correlations below one mean the factors do not")
+print(f"peak together, and the spread legs carry opposite signs — the crack is long")
+print(f"crude against short products, the spark long power against short gas — so")
+print(f"part of the book is a genuine offset rather than a diversified bet.")
 """))
 
 NB4.append(md("""\
 ## 8. Key Findings
 
-1. **Diversification is material.** Short spread positions reduce portfolio
-   VaR by a measurable percentage relative to the sum of standalone risks.
-   The Euler decomposition quantifies exactly how much each position
-   contributes — or offsets.
+1. **Diversification is material.** Portfolio VaR sits well below the sum of
+   standalone risks, driven by correlations below one and by the offsetting
+   legs of the crack and spark spreads. The Euler decomposition quantifies
+   exactly how much each risk factor contributes — or offsets.
 
-2. **t-Copula vs. Gaussian.** A Gaussian copula would ignore tail dependence,
-   underestimating VaR during joint-stress events. The t-copula, with its
-   fitted degrees of freedom $\\nu$, prices in the possibility that gas, power,
-   and carbon crash together — the scenario that matters for a multi-commodity
-   book.
+2. **t-Copula vs. Gaussian.** A Gaussian copula imposes zero tail dependence
+   by construction, so it cannot represent joint crashes however the data
+   behave. The t-copula lets the data decide through $\\nu$: a low fitted value
+   means gas, power and carbon do crash together and VaR must reflect it. Read
+   the fitted $\\nu$ printed in section 3 before claiming the benefit — if it
+   comes back near the upper search bound, the residuals are telling you the
+   tail dependence is weak and the t-copula has converged toward the Gaussian
+   case. That is a finding, not a failure.
 
-3. **The backtest validates the model.** The Kupiec test cannot reject the
-   null of correct specification at the 95% level. The traffic-light zone is
-   green, indicating the model is adequately calibrated for daily risk
-   measurement.
+3. **The backtest is the evidence, not the marketing.** Section 5 reports
+   three separate verdicts: unconditional coverage (Kupiec), conditional
+   coverage including breach clustering (Christoffersen), and the supervisory
+   Basel zone on the 99% series. They are printed as computed. A model that
+   passes coverage but clusters its breaches is still a model that fails when
+   it matters, which is precisely why the independence component is reported
+   alongside the count.
 
-4. **Stress scenarios reveal concentration.** The gas crisis scenario produces
-   the largest P&L impact because the portfolio has net long exposure to the
-   European energy complex (long TTF, long EUA, short spark spread — the
-   latter loses when power spikes relative to gas). The energy transition
-   scenario benefits the carbon position but damages the crude and gas legs.
+4. **Stress scenarios reveal concentration.** The waterfall in section 6 shows
+   which risk factors drive each regime. The mechanism is structural: the
+   short spark spread is short power against long gas, so it loses when power
+   outruns gas; the short crack is long crude against short products, so it
+   gains when refining margins compress. The transition scenario works in the
+   opposite direction for the carbon leg than for the fossil legs.
 
 5. **Model risk is real and acknowledged.** The limitations section documents
    what this engine does not capture. A real trading desk supplements the VaR
