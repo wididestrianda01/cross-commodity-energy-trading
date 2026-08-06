@@ -77,8 +77,9 @@ NB1.append(md("""\
 **Notebook 1** of the Cross-Commodity Energy Trading analytics suite.  
 This notebook characterises the statistical behaviour of nine European energy
 commodities — crude oil, natural gas, carbon allowances, power (German and
-Nordic), coal, refined products, and foreign exchange — from January 2019
-through the present.
+Nordic), coal, refined products, and foreign exchange — from January 2020
+through the present. The sample starts in 2020 because EEX publishes EUA
+auction reports from that year onward, which binds the common-date panel.
 
 ## Executive Summary
 
@@ -303,9 +304,9 @@ Brent track each other closely through 2023, consistent with crude as the
 dominant feedstock cost — the crack spread between them oscillates around a
 relatively stable mean. German power maintains a steady upward trajectory,
 driven by rising carbon costs and the phase-out of nuclear and coal capacity
-under the Energiewende. TTF collapses from its 2019 levels, with a gradual
-recovery from 2023 onward as European storage refills and LNG import capacity
-expands. Coal and gas spend most of the sample below their starting levels,
+under the Energiewende. TTF starts the sample near multi-year lows, spikes
+through 2021 into the 2022 supply crisis, then falls back from 2023 onward as
+European storage refills and LNG import capacity expands. Coal and gas spend most of the sample below their starting levels,
 reflecting the combined pressure of carbon pricing and renewable penetration.
 
 These paths are not merely descriptive — they encode the economic forces that
@@ -329,12 +330,18 @@ Notebook 4 is designed to capture exactly this excess tail mass.
 """))
 
 NB1.append(code("""\
+from omegaconf import OmegaConf
+
 from energy_cross_commodity.risk.returns import compute_log_returns
+from energy_cross_commodity.utils.config import load_config
 
 # Power prices clear negative in oversupply, where a plain log ratio is
 # undefined. The displacement keeps those days in the sample instead of
 # quietly dropping the most extreme observations in the series.
-log_returns = compute_log_returns(wide, {"DE_POWER": 100.0, "NP_SYS": 100.0})
+displacements = OmegaConf.to_container(
+    load_config().risk.price_displacement_eur, resolve=True
+)
+log_returns = compute_log_returns(wide, displacements)
 
 n_cols = 3
 n_rows = 3
@@ -817,7 +824,7 @@ print(f'Carbon cost share of total cost: {(df_dark.carbon_cost / (df_dark.fuel_c
 NB2.append(md("""\
 The dark spread is structurally negative for most of the sample — coal plants
 would lose money running baseload for the majority of trading days. The carbon
-cost component grows from roughly 15 EUR/MWh in 2019 to approximately 40
+cost component grows from roughly 15 EUR/MWh in 2020 to approximately 40
 EUR/MWh by 2024, driven by rising EUA prices. By late 2024, carbon accounts
 for roughly a third of total generation cost for a coal plant.
 
@@ -907,7 +914,7 @@ print(f'Seasonal amplitude (peak-to-trough): {(decomp.seasonal.max() - decomp.se
 
 NB2.append(md("""\
 The crack spread trend exhibits a U-shaped pattern: a structural decline from
-2019 to a trough around 2021–2022, followed by a sharp recovery through 2024–
+2020 to a trough around 2021–2022, followed by a sharp recovery through 2024–
 2025. The seasonal component is modest — roughly ±10 units around the trend —
 suggesting that the crack is driven more by crude-to-product spread dynamics
 than by predictable seasonal demand patterns. The residual component spikes
@@ -1462,7 +1469,7 @@ post_corr = post_period[CORE].corr()
 
 fig4 = make_subplots(
     rows=1, cols=2,
-    subplot_titles=("Pre-Crisis (Jan 2019 – 23 Feb 2022)", "Post-Invasion (24 Feb 2022 – Present)"),
+    subplot_titles=("Pre-Crisis (Jan 2020 – 23 Feb 2022)", "Post-Invasion (24 Feb 2022 – Present)"),
     horizontal_spacing=0.18,
 )
 
@@ -1850,7 +1857,7 @@ cfg = load_config()
 # estimate: left unseeded, the 95% figure moved by roughly 2% between runs on
 # identical data and the Basel zone flipped between four and six breaches. A
 # risk number a reviewer cannot reproduce is not a risk number.
-SEED = 42
+SEED = int(cfg.risk.seed)
 
 DB_PATH = str(Path.cwd().parent / cfg.data.db_path)
 conn = duckdb.connect(DB_PATH)

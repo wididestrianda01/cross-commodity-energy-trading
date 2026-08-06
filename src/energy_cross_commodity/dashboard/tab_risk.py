@@ -12,7 +12,9 @@ from energy_cross_commodity.risk.scenarios import SCENARIOS, run_scenario
 
 
 @st.cache_data(ttl=3600)
-def _fit_copula_var(prices_json: str, positions_json: str, displacements_json: str) -> dict:
+def _fit_copula_var(
+    prices_json: str, positions_json: str, displacements_json: str, seed: int
+) -> dict:
     """Fit t-copula portfolio VaR. Cached to avoid refitting on tab switches.
 
     Args:
@@ -37,7 +39,9 @@ def _fit_copula_var(prices_json: str, positions_json: str, displacements_json: s
     returns = compute_log_returns(pivot[factors], displacements)
 
     copula, garch_fits = fit_fhs_copula(returns)
-    result = compute_portfolio_var(returns, positions, copula, garch_fits=garch_fits)
+    result = compute_portfolio_var(
+        returns, positions, copula, garch_fits=garch_fits, seed=seed
+    )
 
     return {
         "var_95": float(result.var_95),
@@ -73,6 +77,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
         pivot.to_json(orient="split", date_format="iso"),
         json.dumps(positions),
         json.dumps(displacements),
+        int(cfg.risk.seed),
     )
 
     st.subheader("Portfolio VaR Decomposition")

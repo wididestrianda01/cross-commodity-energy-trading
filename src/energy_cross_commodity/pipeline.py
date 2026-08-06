@@ -16,6 +16,53 @@ from energy_cross_commodity.data.normalizer import convert_to_eur_mwh, build_dat
 from energy_cross_commodity.data.synthetic import generate_synthetic_prices
 
 
+def purge_stale_rows(conn, cfg, keep_synthetic: bool) -> None:
+    """Drop rows that the current configuration would never write.
+
+    ``INSERT OR REPLACE`` only replaces rows whose key collides, so anything an
+    earlier run wrote under different settings simply accumulates alongside the
+    new data and every downstream query reads the union. Three kinds of residue
+    are possible, all invisible once loaded:
+
+    * the opposite provenance — a past ``--synthetic`` run leaves simulated
+      prices under dates a real run never touches;
+    * dates before the configured ``start_date``, left by a wider past window;
+    * commodity keys dropped or renamed in the config since the last run.
+
+    Deleting them here makes ``fact_prices`` reflect the current config alone.
+    """
+    provenance = "source <> 'synthetic'" if keep_synthetic else "source = 'synthetic'"
+    keys = list(cfg.commodities.keys())
+    placeholders = ", ".join("?" for _ in keys)
+    removed = conn.execute(
+        f"DELETE FROM fact_prices WHERE {provenance} "
+        f"   OR date < ? "
+        f"   OR commodity_key NOT IN ({placeholders}) "
+        f"RETURNING 1",
+        [cfg.data.start_date, *keys],
+    ).fetchall()
+    if removed:
+        print(f"Purged {len(removed)} stale rows from fact_prices.")
+
+
+def assert_no_synthetic(conn) -> None:
+    """Fail loudly if synthetic rows survive in a real-data run.
+
+    Guards against the failure mode where an earlier ``--synthetic`` run leaves
+    rows behind and the analysis silently reports statistics of a random walk.
+    """
+    rows = conn.execute(
+        "SELECT commodity_key, COUNT(*) FROM fact_prices "
+        "WHERE source = 'synthetic' GROUP BY commodity_key ORDER BY 1"
+    ).fetchall()
+    if rows:
+        detail = ", ".join(f"{k}={n}" for k, n in rows)
+        raise RuntimeError(
+            f"Synthetic rows present in a real-data run: {detail}. "
+            "Refusing to proceed — analysis would mix simulated and market prices."
+        )
+
+
 def run_synthetic(conn, cfg) -> None:
     """Load synthetic data into DuckDB as a fallback when real sources are unavailable."""
     df = generate_synthetic_prices(cfg.data.start_date, cfg.data.end_date or "2025-12-31")
@@ -96,11 +143,11 @@ def run_backtest(conn, cfg) -> None:
         kupiec_test,
     )
 
-    prices = conn.execute("""
-        SELECT date, commodity_key, price_native
-        FROM fact_prices WHERE date >= '2019-01-01'
-        ORDER BY date, commodity_key
-    """).df()
+    prices = conn.execute(
+        "SELECT date, commodity_key, price_native FROM fact_prices "
+        "WHERE date >= ? ORDER BY date, commodity_key",
+        [cfg.data.start_date],
+    ).df()
     pivot = prices.pivot(index="date", columns="commodity_key", values="price_native")
 
     positions = expand_spread_positions(
@@ -118,7 +165,9 @@ def run_backtest(conn, cfg) -> None:
 
     window = int(cfg.risk.rolling_window)
     print(f"Backtest: rolling {window}-day FHS VaR for {len(available)} risk factors...")
-    result = compute_rolling_var(returns, positions, window=window)
+    result = compute_rolling_var(
+        returns, positions, window=window, seed=int(cfg.risk.seed)
+    )
 
     insert_df = result[["date", "realized_pnl", "var_95"]].rename(
         columns={"realized_pnl": "pnl", "var_95": "var_estimate"}
@@ -156,6 +205,8 @@ def run() -> None:
     init_db(conn)
     seed_commodities(conn)
 
+    purge_stale_rows(conn, cfg, keep_synthetic=args.synthetic)
+
     if args.synthetic:
         run_synthetic(conn, cfg)
     else:
@@ -182,6 +233,8 @@ def run() -> None:
             print(msg, file=sys.stderr)
             conn.close()
             sys.exit(1)
+
+        assert_no_synthetic(conn)
 
     # Run backtest after data is loaded
     try:

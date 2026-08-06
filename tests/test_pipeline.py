@@ -70,6 +70,66 @@ def test_build_date_dimension():
     assert dim.iloc[0]["is_trading_day"] in (True, False)
 
 
+def _insert_price(conn, day: str, key: str, source: str) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO fact_prices(date, commodity_key, price_native, "
+        "price_eur_mwh, source) VALUES (?, ?, 50.0, 50.0, ?)",
+        [day, key, source],
+    )
+
+
+def test_assert_no_synthetic_raises_when_synthetic_rows_present(db_conn):
+    """A real-data run must refuse to proceed on leftover synthetic rows.
+
+    The two provenances occupy disjoint date ranges, so nothing collides and
+    nothing looks wrong downstream — the analysis would silently report the
+    statistics of a random walk.
+    """
+    from energy_cross_commodity.pipeline import assert_no_synthetic
+
+    _insert_price(db_conn, "2020-01-02", "BRENT", "synthetic")
+    _insert_price(db_conn, "2026-01-02", "BRENT", "yfinance")
+
+    with pytest.raises(RuntimeError, match="Synthetic rows present"):
+        assert_no_synthetic(db_conn)
+
+
+def test_assert_no_synthetic_passes_on_clean_real_data(db_conn):
+    from energy_cross_commodity.pipeline import assert_no_synthetic
+
+    _insert_price(db_conn, "2020-01-02", "BRENT", "yfinance")
+    assert_no_synthetic(db_conn)
+
+
+def test_purge_stale_rows_drops_residue_from_earlier_configs(db_conn):
+    """Purging is what keeps fact_prices matching the current config.
+
+    Covers all three kinds of residue that ``INSERT OR REPLACE`` cannot clear:
+    opposite provenance, dates before the configured start, and commodity keys
+    that have since been renamed out of the config.
+    """
+    from omegaconf import OmegaConf
+
+    from energy_cross_commodity.pipeline import purge_stale_rows
+
+    cfg = OmegaConf.create(
+        {"data": {"start_date": "2020-01-01"}, "commodities": {"BRENT": {}, "TTF": {}}}
+    )
+
+    _insert_price(db_conn, "2020-01-02", "BRENT", "synthetic")  # wrong provenance
+    _insert_price(db_conn, "2019-06-03", "BRENT", "yfinance")  # before start_date
+    _insert_price(db_conn, "2021-03-04", "API2", "yfinance")  # key not in this config
+    _insert_price(db_conn, "2021-03-04", "TTF", "yfinance")  # keeper
+
+    purge_stale_rows(db_conn, cfg, keep_synthetic=False)
+
+    survivors = db_conn.execute(
+        "SELECT date, commodity_key, source FROM fact_prices"
+    ).fetchall()
+    assert len(survivors) == 1
+    assert survivors[0][1] == "TTF"
+
+
 @pytest.mark.slow
 def test_fetch_yfinance_returns_dataframe():
     """fetch_yfinance returns DataFrame with date + price columns."""

@@ -32,7 +32,7 @@ def generate_synthetic_prices(
         "TTF": {"start": 18, "vol": 0.035, "drift": 0.0002},
         "EUA": {"start": 25, "vol": 0.030, "drift": 0.0003},
         "DE_POWER": {"start": 45, "vol": 0.022, "drift": 0.0001},
-        "NP_SYS": {"start": 40, "vol": 0.020, "drift": 0.0001},
+        "NO1_POWER": {"start": 40, "vol": 0.020, "drift": 0.0001},
         "API2": {"start": 70, "vol": 0.022, "drift": 0.0000},
         "RBOB": {"start": 1.80, "vol": 0.025, "drift": 0.0001},
         "GASOIL": {"start": 600, "vol": 0.020, "drift": 0.0001},

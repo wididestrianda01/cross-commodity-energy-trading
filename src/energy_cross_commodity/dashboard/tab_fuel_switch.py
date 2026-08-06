@@ -49,7 +49,10 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     if len(spreads_df_clean) < 60:
         st.info("Insufficient data for pass-through estimation.")
     else:
-        dr_power = np.diff(np.log(spreads_df_clean["power"].values))
+        # German power clears negative in oversupply, where a plain log is
+        # undefined. Same displacement the risk engine uses.
+        k = float(cfg.risk.price_displacement_eur["DE_POWER"])
+        dr_power = np.diff(np.log(spreads_df_clean["power"].values + k))
         dr_carbon = np.diff(np.log(spreads_df_clean["carbon"].values))
         window = 60
         betas = np.full(len(spreads_df_clean) - window, np.nan)
@@ -69,8 +72,10 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
             x=beta_dates[valid], y=betas[valid], mode="lines",
             line=dict(color="#00003C", width=1.5), name="Rolling β (60-day)",
         ))
-        fig_pt.add_hrect(y0=0.80, y1=1.00, fillcolor="#2E7D6F", opacity=0.1,
-            line_width=0, annotation_text="Empirical Range (0.80–1.00)")
+        lo, hi = np.percentile(betas[valid], [10, 90])
+        fig_pt.add_hrect(y0=lo, y1=hi, fillcolor="#2E7D6F", opacity=0.1,
+            line_width=0,
+            annotation_text=f"Realised 10-90th percentile ({lo:.2f} to {hi:.2f})")
         fig_pt.add_hline(y=0, line_dash="dash", line_color="#6B6B6B", line_width=0.5)
         fig_pt.update_layout(height=300, margin=dict(l=10,r=10,t=10,b=10),
             yaxis_title="β (power sensitivity to carbon)")
@@ -78,9 +83,12 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
 
         current_beta = betas[valid][-1] if valid.any() else np.nan
         st.caption(
-            f"Current pass-through: β = {current_beta:.2f}. "
-            f"β = 0.85 means a €10/t carbon increase flows through as €8.50/MWh in German power. "
-            "This is the carbon-price-to-power-price transmission mechanism."
+            f"Current 60-day pass-through: β = {current_beta:.2f}. "
+            "β = 1 would mean a 1% move in EUA passes fully into German power. "
+            "The estimate is unstable and frequently negative: at daily frequency "
+            "weather and renewable output dominate the marginal price, so the "
+            "carbon component is not identifiable from returns. Read it as a "
+            "diagnostic of that instability, not as a transmission coefficient."
         )
     st.subheader("3-2-1 Crack Spread — Seasonal Decomposition")
     crack_prices = conn.execute("""
@@ -184,10 +192,19 @@ over 300 EUR/MWh.
 
 **Carbon pass-through rate** measures how carbon price changes flow through to German
 power prices. It is estimated as the rolling 60-day regression coefficient β in:
-Δlog(P_power) = α + β × Δlog(P_carbon) + ε. The empirical range is 0.80–1.00, meaning
-a €10/t carbon increase raises power prices by €8–10/MWh. The pass-through is near
-complete because carbon is a marginal cost passed directly to consumers under the EU
-ETS — generators do not absorb carbon costs; they pass them through.
+Δlog(P_power) = α + β × Δlog(P_carbon) + ε, using the same displaced log returns the
+risk engine applies to power (German prices clear negative, where a plain log is
+undefined). The full-period daily estimate is negative, and the shaded band above shows
+the rolling estimate's own 10th-to-90th percentile range, which straddles zero — the
+sign itself is not stable.
+
+Cost accounting says a €100/t EUA adds about €37/MWh to a 55%-efficient gas plant's
+marginal cost, so complete pass-through is the textbook expectation. Daily returns do
+not recover it. Weather and renewable output move the marginal price far more than
+carbon does day to day, and carbon is only priced into power when a thermal unit is
+setting the price at all. The coefficient is therefore not identifiable at this
+frequency; treat the chart as a diagnostic of that instability rather than as a
+transmission coefficient.
 
 **Seasonal decomposition** uses STL (Seasonal-Trend decomposition with LOESS) on the
 3-2-1 crack spread with a period of 252 trading days. The trend component captures
