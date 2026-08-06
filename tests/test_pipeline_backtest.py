@@ -4,7 +4,6 @@ import duckdb
 import numpy as np
 import pandas as pd
 from energy_cross_commodity.db import init_db, seed_commodities
-from energy_cross_commodity.risk.copula import fit_t_copula
 from energy_cross_commodity.risk.var_engine import compute_rolling_var
 
 
@@ -20,7 +19,7 @@ def test_rolling_var_populates_backtest_table():
     }, index=dates)
     positions = {"TTF": 8_000_000, "BRENT": 9_200_000, "EUA": 3_000_000}
 
-    result = compute_rolling_var(returns, positions, window=100, copula_fit_fn=fit_t_copula)
+    result = compute_rolling_var(returns, positions, window=100, n_simulations=500)
 
     assert len(result) > 0
     assert set(result.columns) == {"date", "var_95", "var_99", "realized_pnl"}
@@ -39,7 +38,7 @@ def test_backtest_rows_insertable():
     }, index=dates)
     # Single-asset book: no dependence structure, so no copula.
     result = compute_rolling_var(
-        returns, {"X": 1_000_000}, window=60, copula_fit_fn=lambda _w: None
+        returns, {"X": 1_000_000}, window=60, fit_fn=lambda _w: (None, None)
     )
 
     conn = duckdb.connect(":memory:")

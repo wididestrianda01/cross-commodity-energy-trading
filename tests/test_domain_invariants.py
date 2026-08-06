@@ -18,6 +18,11 @@ from scipy import stats
 from energy_cross_commodity.risk.copula import compute_tail_dependence, fit_t_copula
 from energy_cross_commodity.risk.correlation import fit_dcc_garch
 from energy_cross_commodity.risk.var_engine import compute_portfolio_var
+from energy_cross_commodity.risk.var_engine import fit_fhs_copula
+from energy_cross_commodity.risk.scenarios import (
+    apply_correlation_override,
+    stressed_copula,
+)
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "pipeline.yaml"
 
@@ -184,3 +189,64 @@ def test_component_var_adds_up_to_total_var():
     )
 
     assert sum(result.component_var.values()) == pytest.approx(result.var_95, rel=0.05)
+
+
+def test_correlation_override_actually_changes_the_matrix():
+    """A stress that leaves the matrix untouched reports a shock that never ran."""
+    commodities = ["TTF", "DE_POWER", "EUA", "BRENT"]
+    n = len(commodities)
+    base = np.full((n, n), 0.3)
+    np.fill_diagonal(base, 1.0)
+
+    stressed = apply_correlation_override(base, commodities, "all_to_one")
+
+    off_diagonal = np.triu_indices(n, 1)
+    assert np.allclose(stressed[off_diagonal], 0.90)
+    assert not np.allclose(stressed, base)
+    # The caller's matrix must not be mutated in place.
+    assert np.allclose(base[off_diagonal], 0.3)
+
+
+def test_unknown_override_type_raises_instead_of_returning_base():
+    """The bug this guards: an unrecognised name silently returned base_corr."""
+    commodities = ["TTF", "DE_POWER"]
+    base = np.array([[1.0, 0.3], [0.3, 1.0]])
+    with pytest.raises(ValueError, match="Unknown override_type"):
+        apply_correlation_override(base, commodities, "crisis")
+
+
+def test_gas_power_spike_requires_its_legs():
+    """Without TTF/DE_POWER/EUA the spike is undefined, not a no-op."""
+    base = np.array([[1.0, 0.3], [0.3, 1.0]])
+    with pytest.raises(ValueError, match="gas_power_spike"):
+        apply_correlation_override(base, ["BRENT", "RBOB"], "gas_power_spike")
+
+
+def test_stressed_copula_changes_simulated_var():
+    """End-to-end: the stressed copula must move the VaR, not return the base."""
+    rng = np.random.default_rng(11)
+    n = 600
+    common = rng.standard_normal(n)
+    rets = pd.DataFrame(
+        {
+            "TTF": (common + rng.standard_normal(n)) * 0.02,
+            "DE_POWER": (common + rng.standard_normal(n)) * 0.02,
+            "EUA": (common + rng.standard_normal(n)) * 0.02,
+        },
+        index=pd.date_range("2020-01-01", periods=n, freq="B"),
+    )
+    positions = {"TTF": 1_000_000.0, "DE_POWER": 1_000_000.0, "EUA": 1_000_000.0}
+
+    copula, fits = fit_fhs_copula(rets)
+    crisis = stressed_copula(copula, list(rets.columns), "all_to_one")
+
+    # Common random numbers: same seed, so any difference is the correlation.
+    base_var = compute_portfolio_var(
+        rets, positions, copula, garch_fits=fits, seed=7
+    ).var_99
+    stressed_var = compute_portfolio_var(
+        rets, positions, crisis, garch_fits=fits, seed=7
+    ).var_99
+
+    # A long-only book under converging correlations must get riskier.
+    assert stressed_var > base_var

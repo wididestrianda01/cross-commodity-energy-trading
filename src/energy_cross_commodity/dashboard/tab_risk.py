@@ -5,45 +5,45 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import duckdb
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+from energy_cross_commodity.risk.portfolio import expand_spread_positions
+from energy_cross_commodity.risk.returns import compute_log_returns
 from energy_cross_commodity.risk.scenarios import SCENARIOS, run_scenario
 
 
 @st.cache_data(ttl=3600)
-def _fit_copula_var(prices_json: str, positions_json: str) -> dict:
+def _fit_copula_var(prices_json: str, positions_json: str, displacements_json: str) -> dict:
     """Fit t-copula portfolio VaR. Cached to avoid refitting on tab switches.
 
     Args:
         prices_json: JSON-serialized pivot table of prices.
-        positions_json: JSON-serialized position dict.
+        positions_json: JSON-serialized exposures keyed by price factor.
+        displacements_json: JSON-serialized displacements for series that
+            can print negative prices.
 
     Returns:
-        Dict with var_95, var_99, es_975, component_var, commodities.
+        Dict with var_95, var_99, es_975, df, component_var, commodities.
     """
     import json
     import pandas as pd
-    from energy_cross_commodity.risk.garch import fit_univariate_garch
-    from energy_cross_commodity.risk.copula import fit_t_copula
-    from energy_cross_commodity.risk.var_engine import compute_portfolio_var
+    from energy_cross_commodity.risk.returns import compute_log_returns
+    from energy_cross_commodity.risk.var_engine import compute_portfolio_var, fit_fhs_copula
 
     pivot = pd.read_json(prices_json, orient="split")
     positions = json.loads(positions_json)
+    displacements = json.loads(displacements_json)
 
-    returns = np.log(pivot / pivot.shift(1)).dropna()
-    returns = returns[[c for c in pivot.columns if c in positions]]
+    factors = [c for c in pivot.columns if c in positions]
+    returns = compute_log_returns(pivot[factors], displacements)
 
-    std_resids = pd.DataFrame(index=returns.index)
-    for col in returns.columns:
-        garch_res = fit_univariate_garch(returns[col])
-        std_resids[col] = garch_res.std_residuals
-
-    copula = fit_t_copula(std_resids)
-    result = compute_portfolio_var(returns, positions, copula)
+    copula, garch_fits = fit_fhs_copula(returns)
+    result = compute_portfolio_var(returns, positions, copula, garch_fits=garch_fits)
 
     return {
         "var_95": float(result.var_95),
         "var_99": float(result.var_99),
         "es_975": float(result.es_975),
+        "df": float(copula.df),
         "component_var": {k: float(v) for k, v in result.component_var.items()},
         "commodities": list(returns.columns),
     }
@@ -60,12 +60,19 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     """).df()
     pivot = prices.pivot(index="date", columns="commodity_key", values="price_native")
 
-    positions = {k: v.notional_eur for k, v in cfg.portfolio.positions.items()}
+    # Spreads are traded as one line but carry risk through their legs, so the
+    # book is restated as signed exposures to the underlying price factors.
+    positions = expand_spread_positions(
+        {k: v.notional_eur for k, v in cfg.portfolio.positions.items()},
+        OmegaConf.to_container(cfg.portfolio.spread_legs, resolve=True),
+    )
+    displacements = OmegaConf.to_container(cfg.risk.price_displacement_eur, resolve=True)
 
     # Copula VaR (cached)
     var_result = _fit_copula_var(
         pivot.to_json(orient="split", date_format="iso"),
         json.dumps(positions),
+        json.dumps(displacements),
     )
 
     st.subheader("Portfolio VaR Decomposition")
@@ -92,7 +99,10 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     col3.metric("ES 97.5%", f"€{var_result['es_975']:,.0f}",
         help="Expected Shortfall: mean loss beyond 97.5th percentile")
 
-    st.caption(f"t-Copula df = {var_result.get('df', 'computed')}. Euler allocations sum within 5% of total VaR.")
+    st.caption(
+        f"t-copula ν = {var_result['df']:.2f} on {len(var_result['commodities'])} price factors. "
+        "Component VaRs are Euler allocations and sum to total VaR up to simulation noise."
+    )
 
     # --- VaR Backtesting Chart ---
     st.subheader("VaR Backtesting")
@@ -146,8 +156,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     st.subheader("Stress Scenario P&L")
     scenario_choice = st.selectbox("Select scenario", list(SCENARIOS.keys()), format_func=lambda x: SCENARIOS[x].name)
     scenario = SCENARIOS[scenario_choice]
-    current_prices = {c: float(pivot[c].iloc[-1]) for c in pivot.columns if c in positions}
-    result = run_scenario(positions, scenario, current_prices)
+    result = run_scenario(positions, scenario)
 
     items = list(result.pnl_by_position.keys())
     values = list(result.pnl_by_position.values())
@@ -168,12 +177,12 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     st.caption(scenario.description)
 
     st.subheader("Portfolio P&L Trajectory")
-    returns = np.log(pivot / pivot.shift(1)).dropna()
-    port_returns = returns[[c for c in returns.columns if c in positions]]
+    port_returns = compute_log_returns(
+        pivot[[c for c in pivot.columns if c in positions]], displacements
+    )
     daily_pnl = pd.Series(0.0, index=port_returns.index)
     for c in port_returns.columns:
-        if c in positions:
-            daily_pnl += port_returns[c] * positions[c]
+        daily_pnl += port_returns[c] * positions[c]
     cum_pnl = daily_pnl.cumsum()
 
     fig_pnl = go.Figure()
@@ -210,7 +219,7 @@ def render(conn: duckdb.DuckDBPyConnection, cfg: DictConfig) -> None:
     pc4.metric("% Positive Days", f"{pct_pos:.0f}%")
 
     with st.expander("Methodology & Interpretation"):
-        st.markdown("""
+        st.markdown(f"""
 **Portfolio VaR decomposition** uses Euler-allocated component VaR from 10,000 filtered
 historical simulation draws. Each position's bar represents its marginal contribution to
 total portfolio risk, estimated as a kernel-smoothed conditional expectation of the
@@ -226,27 +235,37 @@ the fitted copula, mapped back through each commodity's *empirical* residual qua
 function and rescaled by its forecast volatility; (4) portfolio P&L = Σ(positions ×
 simulated returns); (5) VaR₉₅ = −Q₀.₀₅(P&L), ES₉₇.₅ = −E[P&L | P&L ≤ −VaR₉₇.₅].
 
-**VaR backtesting** evaluates the model's predictive accuracy. The rolling 252-day 95% VaR
-is compared against realized next-day P&L. The Kupiec (1995) proportion-of-failures test
-asks: is the observed breach rate consistent with the model's 5% expected rate? A p-value
-> 0.05 means we cannot reject the null hypothesis of correct coverage. The breach count and
-p-value for the current sample are shown in the backtest panel above; note that failing to
-reject is weak evidence — the test has limited power against a mis-specified model at this
-sample size.
+**VaR backtesting** evaluates the model's predictive accuracy. The model is re-estimated on
+a rolling {int(cfg.risk.rolling_window)}-day window and its 95% VaR compared against the
+realized next-day P&L. The Kupiec (1995) proportion-of-failures test asks whether the
+observed breach rate is consistent with the model's 5% expected rate; a p-value > 0.05 means
+correct unconditional coverage cannot be rejected. That is weak evidence rather than
+validation — the test has limited power at this sample size, and it says nothing about
+whether breaches cluster, which is what a conditional-coverage test addresses.
 
-**Stress scenarios** apply predefined price shocks and correlation overrides to the
-current portfolio. Three scenarios are modeled:
-- *Gas crisis*: TTF +300%, power +200%, carbon +50%, Brent +30%. All correlations → 0.90.
-  Models a Nord Stream-style supply shock.
-- *Global recession*: Brent −40%, TTF −30%, power −25%, carbon −20%. All correlations → 0.90.
-  Models a demand-destruction event where all risk assets sell off together.
-- *Energy transition*: Carbon +200% (€150/t), coal −40%, Brent −30%. Gas-power correlation → 0.10.
-  Models a structural shift where carbon policy drives fuel switching and renewables decouple
-  gas from power prices.
+**Stress scenarios** are deterministic full revaluations: the scenario fixes where every
+price goes, so each leg's P&L is its signed exposure times its shock and the total is their
+sum. No correlation is involved, because specifying the joint move is exactly what a
+scenario does — correlation matters for VaR, where the moves are unknown. Three scenarios
+are modeled:
+- *Gas crisis*: TTF +300%, power +200%, carbon +50%, Brent +30%. A Nord Stream-style
+  supply shock.
+- *Global recession*: Brent −40%, TTF −30%, power −25%, carbon −20%. Demand destruction
+  where all risk assets sell off together.
+- *Energy transition*: carbon +200% (€150/t), coal −40%, Brent −30%, power −10%. A
+  structural shift where carbon policy drives fuel switching and renewables cannibalize
+  power prices.
 
-**Portfolio P&L trajectory** shows the cumulative profit/loss of the hypothetical integrated energy
-book (long Brent, long TTF, long carbon; short crack spread, short spark spread).
-Performance metrics (Sharpe ratio, maximum drawdown, percent positive days) are computed
-on daily P&L. The annotations highlight how the portfolio performed through the key market
-events of 2020-2024.
+**Position mapping.** The book is quoted as outright legs plus a short 3-2-1 crack and a
+short spark spread, but a spread level is a price difference: it goes negative and has no
+log return, so it cannot be a risk factor. Each spread is therefore decomposed into its
+underlyings — the delta of a spread is the sum of the deltas of its legs — and the risk
+engine runs on the netted factor exposures. Day-ahead power prints negative on oversupply
+days, so power returns use a displaced log return ln((P+k)/(P₋₁+k)); without it a plain
+log return is undefined and a panel-wide dropna would delete exactly those days.
+
+**Portfolio P&L trajectory** shows the cumulative profit/loss of the hypothetical integrated
+energy book. Performance metrics (Sharpe ratio, maximum drawdown, percent positive days)
+are computed on daily P&L. The annotations highlight how the portfolio performed through the
+key market events of 2020-2024.
 """)

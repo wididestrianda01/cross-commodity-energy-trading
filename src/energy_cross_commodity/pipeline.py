@@ -81,14 +81,20 @@ def run_carbon_ets(conn, cfg) -> None:
         print("carbon-ets: EUA prices loaded.")
 
 def run_backtest(conn, cfg) -> None:
-    """Compute rolling copula VaR backtest and write to var_backtest table.
+    """Compute rolling filtered-historical-simulation VaR backtest.
 
-    Fits a rolling 252-day t-copula VaR model, computes 1-day-ahead VaR 95%
-    and realized P&L for each day, and stores results in var_backtest.
+    Re-estimates the GARCH + t-copula model on a rolling window, records the
+    1-day-ahead 95% VaR and the realized P&L it is judged against, and stores
+    the pair in var_backtest for the Kupiec and Christoffersen tests.
     """
-    import numpy as np
-    from energy_cross_commodity.risk.copula import fit_t_copula
-    from energy_cross_commodity.risk.var_engine import compute_rolling_var, kupiec_test
+    from omegaconf import OmegaConf
+    from energy_cross_commodity.risk.portfolio import expand_spread_positions
+    from energy_cross_commodity.risk.returns import compute_log_returns
+    from energy_cross_commodity.risk.var_engine import (
+        christoffersen_test,
+        compute_rolling_var,
+        kupiec_test,
+    )
 
     prices = conn.execute("""
         SELECT date, commodity_key, price_native
@@ -96,19 +102,23 @@ def run_backtest(conn, cfg) -> None:
         ORDER BY date, commodity_key
     """).df()
     pivot = prices.pivot(index="date", columns="commodity_key", values="price_native")
-    returns = np.log(pivot / pivot.shift(1)).dropna()
 
-    positions = {k: v.notional_eur for k, v in cfg.portfolio.positions.items()}
-    available = [c for c in returns.columns if c in positions]
-    returns = returns[available]
-    positions = {c: positions[c] for c in available}
-
-    if len(available) < 1:
+    positions = expand_spread_positions(
+        {k: v.notional_eur for k, v in cfg.portfolio.positions.items()},
+        OmegaConf.to_container(cfg.portfolio.spread_legs, resolve=True),
+    )
+    available = [c for c in pivot.columns if c in positions]
+    if not available:
         print("Backtest: no portfolio commodities available, skipping.")
         return
 
-    print(f"Backtest: fitting rolling 252-day copula VaR for {len(available)} assets...")
-    result = compute_rolling_var(returns, positions, window=252, copula_fit_fn=fit_t_copula)
+    displacements = OmegaConf.to_container(cfg.risk.price_displacement_eur, resolve=True)
+    returns = compute_log_returns(pivot[available], displacements)
+    positions = {c: positions[c] for c in available}
+
+    window = int(cfg.risk.rolling_window)
+    print(f"Backtest: rolling {window}-day FHS VaR for {len(available)} risk factors...")
+    result = compute_rolling_var(returns, positions, window=window)
 
     insert_df = result[["date", "realized_pnl", "var_95"]].rename(
         columns={"realized_pnl": "pnl", "var_95": "var_estimate"}
@@ -117,12 +127,14 @@ def run_backtest(conn, cfg) -> None:
     conn.register("_bt", insert_df)
     conn.execute("INSERT INTO var_backtest SELECT * FROM _bt")
 
-    breaches = int((insert_df["pnl"] < -insert_df["var_estimate"]).sum())
+    breach_flags = (insert_df["pnl"] < -insert_df["var_estimate"]).to_numpy()
+    breaches = int(breach_flags.sum())
     ktest = kupiec_test(breaches, len(insert_df), 0.95)
+    ctest = christoffersen_test(breach_flags, 0.95)
     print(
         f"Backtest: {len(insert_df)} days stored. "
         f"{breaches} breaches (expected ~{len(insert_df)*0.05:.0f}). "
-        f"Kupiec p={ktest['p_value']:.3f}"
+        f"Kupiec p={ktest['p_value']:.3f}, Christoffersen CC p={ctest['p_cc']:.3f}"
     )
 
 

@@ -66,7 +66,19 @@ risk:
   n_simulations: 10000
   dcc_p: 1
   dcc_q: 1
-  rolling_window: 60
+  # Estimation window for the rolling VaR backtest. GARCH(1,1) with Student-t
+  # errors has five parameters and the FHS step reads a 1-in-20 empirical
+  # residual quantile, so a short window gives unstable volatility persistence
+  # and a tail read off two or three points. Two trading years is the usual
+  # desk choice and matches the Basel 250-day backtesting sample.
+  rolling_window: 500
+  # Day-ahead power clears negative when inflexible generation exceeds demand
+  # (15 days for DE_LU in this sample, low of -53.87 EUR/MWh), so a plain log
+  # return is undefined. A fixed displacement k keeps ln((P+k)/(P_prev+k))
+  # well defined and reduces to the ordinary log return when P >> k.
+  price_displacement_eur:
+    DE_POWER: 100.0
+    NP_SYS: 100.0
 
 portfolio:
   positions:
@@ -75,6 +87,21 @@ portfolio:
     TTF: {notional_eur: 8000000, direction: "LONG"}
     SPARK_SPREAD: {notional_eur: -4000000, direction: "SHORT"}
     EUA: {notional_eur: 3000000, direction: "LONG"}
+  # Spreads are traded as one instrument but risk-managed by their legs: the
+  # delta of a spread is the sum of the deltas of its underlyings. Weights
+  # multiply the spread notional to give each leg's signed EUR exposure.
+  spread_legs:
+    # 3-2-1 crack: 3 bbl crude in, 2 bbl gasoline + 1 bbl distillate out.
+    # Short the crack = short the refining margin = long crude, short products.
+    CRACK_3_2_1:
+      BRENT: -1.0
+      RBOB: 0.666667
+      GASOIL: 0.333333
+    # Spark spread = power - heat_rate x gas. Short the spark = short power,
+    # long gas.
+    SPARK_SPREAD:
+      DE_POWER: 1.0
+      TTF: -1.0
 
 scenarios:
   gas_crisis:

@@ -5,8 +5,36 @@ import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 
-from energy_cross_commodity.risk.copula import CopulaFit, simulate_t_copula
+from energy_cross_commodity.risk.copula import CopulaFit, fit_t_copula, simulate_t_copula
 from energy_cross_commodity.risk.garch import GARCHResult, fit_univariate_garch
+
+
+def fit_fhs_copula(
+    returns: pd.DataFrame,
+) -> tuple[CopulaFit, dict[str, GARCHResult]]:
+    """Fit the FHS dependence structure on GARCH standardised residuals.
+
+    Filtered Historical Simulation draws copula uniforms and maps them
+    through the *residual* quantiles, so the copula has to describe the
+    dependence of the residuals. Fitting it on raw returns instead mixes
+    two objects: raw returns share a common volatility cycle, and that
+    shared cycle shows up in the fit as dependence that the GARCH filter
+    has already accounted for. The copula is then applied to variables it
+    was not estimated on.
+
+    Args:
+        returns: Historical log returns (one column per asset).
+
+    Returns:
+        The copula fitted on the standardised residuals, together with the
+        GARCH fits, so callers can pass both to ``compute_portfolio_var``
+        without refitting.
+    """
+    fits = {c: fit_univariate_garch(returns[c]) for c in returns.columns}
+    residuals = pd.DataFrame(
+        {c: np.asarray(fits[c].std_residuals, dtype=float) for c in returns.columns}
+    ).dropna()
+    return fit_t_copula(residuals), fits
 
 
 @dataclass
@@ -192,11 +220,94 @@ def kupiec_test(breaches: int, total: int, confidence: float) -> dict:
     }
 
 
+def christoffersen_test(breaches: np.ndarray, confidence: float) -> dict:
+    """Christoffersen (1998) conditional-coverage backtest.
+
+    Kupiec only counts breaches. A model can produce the right *number*
+    of breaches and still be wrong if they arrive in clusters, which is
+    what a stale volatility estimate looks like. The independence
+    statistic tests the breach indicator against a first-order Markov
+    chain, and the conditional-coverage statistic ``LR_cc = LR_uc +
+    LR_ind`` tests both properties jointly against chi-square with two
+    degrees of freedom.
+
+    Args:
+        breaches: Binary breach indicator in chronological order.
+        confidence: VaR confidence level the indicator was built at.
+
+    Returns:
+        The independence and conditional-coverage statistics with their
+        p-values. ``lr_ind`` is zero when a transition count is empty,
+        the degenerate case where the Markov model is unidentified.
+    """
+    indicator = np.asarray(breaches, dtype=int)
+    total = indicator.size
+    uc = kupiec_test(int(indicator.sum()), total, confidence)
+    if total < 2:
+        return {"lr_ind": 0.0, "p_ind": 1.0, "lr_cc": uc["lr_stat"], "p_cc": uc["p_value"]}
+
+    previous, current = indicator[:-1], indicator[1:]
+    n00 = int(np.sum((previous == 0) & (current == 0)))
+    n01 = int(np.sum((previous == 0) & (current == 1)))
+    n10 = int(np.sum((previous == 1) & (current == 0)))
+    n11 = int(np.sum((previous == 1) & (current == 1)))
+
+    pi_01 = n01 / (n00 + n01) if (n00 + n01) else 0.0
+    pi_11 = n11 / (n10 + n11) if (n10 + n11) else 0.0
+    pi = (n01 + n11) / (n00 + n01 + n10 + n11)
+
+    if 0.0 < pi < 1.0 and 0.0 < pi_01 < 1.0 and 0.0 < pi_11 < 1.0:
+        log_null = (n00 + n10) * np.log(1 - pi) + (n01 + n11) * np.log(pi)
+        log_alt = (
+            n00 * np.log(1 - pi_01)
+            + n01 * np.log(pi_01)
+            + n10 * np.log(1 - pi_11)
+            + n11 * np.log(pi_11)
+        )
+        lr_ind = float(max(0.0, 2.0 * (log_alt - log_null)))
+    else:
+        lr_ind = 0.0
+
+    lr_cc = float(uc["lr_stat"] + lr_ind)
+    return {
+        "lr_ind": lr_ind,
+        "p_ind": float(1.0 - scipy_stats.chi2.cdf(lr_ind, 1)),
+        "lr_cc": lr_cc,
+        "p_cc": float(1.0 - scipy_stats.chi2.cdf(lr_cc, 2)),
+    }
+
+
+# Basel traffic-light thresholds. Defined for a 99% VaR over 250 trading
+# days and for nothing else: the zone boundaries are binomial tail
+# probabilities of that specific test, so reusing them at 95% or over a
+# longer sample compares a breach count against the wrong distribution.
+BASEL_TRAFFIC_LIGHT_WINDOW = 250
+BASEL_TRAFFIC_LIGHT_CONFIDENCE = 0.99
+_BASEL_GREEN_MAX = 4
+_BASEL_YELLOW_MAX = 9
+
+
+def basel_traffic_light(breaches_250d: int) -> str:
+    """Zone for a 99% VaR backtest over 250 trading days.
+
+    Args:
+        breaches_250d: Breaches of the 99% VaR in the last 250 days.
+
+    Returns:
+        "GREEN", "YELLOW" or "RED" per the Basel supervisory framework.
+    """
+    if breaches_250d <= _BASEL_GREEN_MAX:
+        return "GREEN"
+    if breaches_250d <= _BASEL_YELLOW_MAX:
+        return "YELLOW"
+    return "RED"
+
+
 def compute_rolling_var(
     returns: pd.DataFrame,
     positions: dict[str, float],
     window: int,
-    copula_fit_fn,
+    fit_fn=fit_fhs_copula,
     n_simulations: int = 2000,
     seed: int | None = None,
 ) -> pd.DataFrame:
@@ -213,7 +324,9 @@ def compute_rolling_var(
         returns: Historical log returns (one column per asset).
         positions: Notional exposures keyed by commodity.
         window: Estimation window length in trading days.
-        copula_fit_fn: Callable mapping a window of returns to a CopulaFit.
+        fit_fn: Callable mapping a window of returns to the pair
+            ``(copula, garch_fits)``. Returning both lets each window
+            filter its returns once instead of twice.
         n_simulations: Draws per window. Lower than the single-shot
             default because this runs once per trading day.
         seed: Base seed; each window is offset from it so the windows are
@@ -228,17 +341,20 @@ def compute_rolling_var(
 
     for end in range(window, len(returns)):
         window_rets = returns.iloc[end - window : end]
-        copula = copula_fit_fn(window_rets)
+        copula, garch_fits = fit_fn(window_rets)
         portfolio_var = compute_portfolio_var(
             window_rets,
             positions,
             copula,
             n_simulations=n_simulations,
+            garch_fits=garch_fits,
             seed=None if seed is None else seed + end,
         )
 
         results.append({
-            "date": returns.index[end - 1],
+            # Dated by the day the P&L is realised, so a breach lines up with
+            # the day it happened rather than with the forecast origin.
+            "date": returns.index[end],
             "var_95": portfolio_var.var_95,
             "var_99": portfolio_var.var_99,
             "realized_pnl": float(returns.iloc[end].to_numpy() @ position_array),

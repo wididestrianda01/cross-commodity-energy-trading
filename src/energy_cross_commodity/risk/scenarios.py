@@ -2,8 +2,7 @@
 
 from dataclasses import dataclass
 import numpy as np
-from scipy import stats as scipy_stats
-from energy_cross_commodity.risk.copula import CopulaFit, simulate_t_copula
+from energy_cross_commodity.risk.copula import CopulaFit
 
 
 @dataclass
@@ -51,10 +50,6 @@ SCENARIOS: dict[str, ScenarioDefinition] = {
 }
 
 
-def _commodity_universe() -> list[str]:
-    return ["BRENT", "TTF", "DE_POWER", "EUA", "RBOB", "GASOIL", "API2"]
-
-
 def apply_correlation_override(
     base_corr: np.ndarray,
     commodities: list[str],
@@ -64,6 +59,14 @@ def apply_correlation_override(
 
     - "all_to_one": sets all off-diagonals to 0.90.
     - "gas_power_spike": sets TTF-DE_POWER and TTF-EUA correlations to 0.85.
+
+    Args:
+        base_corr: Fitted copula correlation matrix.
+        commodities: Column order of ``base_corr``.
+        override_type: Which stressed regime to impose.
+
+    Returns:
+        A copy of the matrix with the stressed entries substituted.
     """
     n = len(commodities)
     if base_corr.shape != (n, n):
@@ -75,63 +78,87 @@ def apply_correlation_override(
             for j in range(i + 1, n):
                 result[i, j] = result[j, i] = 0.90
     elif override_type == "gas_power_spike":
-        try:
-            ttf_idx = commodities.index("TTF")
-            power_idx = commodities.index("DE_POWER")
-            eua_idx = commodities.index("EUA")
-            result[ttf_idx, power_idx] = result[power_idx, ttf_idx] = 0.85
-            result[ttf_idx, eua_idx] = result[eua_idx, ttf_idx] = 0.85
-        except ValueError:
-            pass
+        # Missing legs must not pass silently: a matrix returned unstressed but
+        # labelled "stressed" reports a correlation shock that never happened.
+        missing = [c for c in ("TTF", "DE_POWER", "EUA") if c not in commodities]
+        if missing:
+            raise ValueError(
+                f"gas_power_spike needs {missing} in the book; got {commodities}"
+            )
+        ttf_idx = commodities.index("TTF")
+        power_idx = commodities.index("DE_POWER")
+        eua_idx = commodities.index("EUA")
+        result[ttf_idx, power_idx] = result[power_idx, ttf_idx] = 0.85
+        result[ttf_idx, eua_idx] = result[eua_idx, ttf_idx] = 0.85
+    else:
+        raise ValueError(
+            f"Unknown override_type {override_type!r}; "
+            "expected 'all_to_one' or 'gas_power_spike'"
+        )
 
     return result
+
+
+def stressed_copula(
+    copula: CopulaFit,
+    commodities: list[str],
+    override_type: str,
+) -> CopulaFit:
+    """Rebuild a copula under a scenario's stressed correlation regime.
+
+    Deterministic scenario P&L answers "what if these prices move by this
+    much". It cannot answer "how much could we lose if the book's
+    diversification stops working", because a fixed set of shocks has no
+    distribution. Re-estimating VaR with the stressed correlation
+    substituted for the fitted one does answer that, and it is where a
+    correlation override belongs.
+
+    Args:
+        copula: The fitted copula.
+        commodities: Column order matching the copula correlation matrix.
+        override_type: Stressed regime, see ``apply_correlation_override``.
+
+    Returns:
+        A copula with the stressed correlation and the fitted degrees of
+        freedom. Tail dependence is recomputed by the caller if needed.
+    """
+    correlation = apply_correlation_override(copula.correlation, commodities, override_type)
+    return CopulaFit(
+        correlation=correlation,
+        df=copula.df,
+        tail_dep=np.zeros_like(correlation),
+    )
 
 
 def run_scenario(
     positions: dict[str, float],
     scenario: ScenarioDefinition,
-    current_prices: dict[str, float],
-    copula: CopulaFit | None = None,
-    commodities: list[str] | None = None,
 ) -> ScenarioResult:
-    """Calculate P&L impact of a stress scenario, optionally copula-aware."""
-    # Copula-aware path: simulate correlated shocks
-    if copula is not None and scenario.correlation_override is not None:
-        if commodities is None:
-            commodities = _commodity_universe()
-        overridden_corr = apply_correlation_override(
-            copula.correlation, commodities, scenario.correlation_override
-        )
-        overridden_copula = CopulaFit(
-            correlation=overridden_corr,
-            df=copula.df,
-            tail_dep=np.zeros(overridden_corr.shape),
-        )
-        uniforms = simulate_t_copula(overridden_copula, n=10000)
-        z = scipy_stats.norm.ppf(np.clip(uniforms, 1e-10, 1 - 1e-10))
-        pnl_samples = np.zeros(z.shape[0])
-        for idx, comm in enumerate(commodities):
-            if comm in positions and comm in scenario.price_shocks:
-                shock = scenario.price_shocks[comm]
-                notional = positions[comm]
-                pnl_samples += z[:, idx] * abs(notional) * shock * (1 if notional >= 0 else -1)
-        pnl_by_position: dict[str, float] = {}
-        for comm in positions:
-            pnl_by_position[comm] = 0.0
-        total_pnl = float(np.mean(pnl_samples))
-        return ScenarioResult(pnl_by_position=pnl_by_position, total_pnl=total_pnl)
+    """Full-revaluation P&L for a deterministic stress scenario.
 
-    # Simple deterministic path: shock * notional
-    pnl_by_position = {}
-    for key, notional in positions.items():
-        if key in scenario.price_shocks:
-            shock = scenario.price_shocks[key]
-            pnl = abs(notional) * shock
-            if notional < 0:
-                pnl = -pnl
-            pnl_by_position[key] = pnl
-        else:
-            pnl_by_position[key] = 0.0
+    A scenario states where each price goes, so the revaluation is
+    deterministic: for a book of linear positions the P&L of each leg is
+    its signed exposure times the shock. Nothing here is simulated, and
+    the correlation between the factors plays no part — the scenario has
+    already fixed every price jointly, which is the whole point of
+    specifying one. Correlation enters the framework through VaR, where
+    the moves are unknown, not through stress testing, where they are
+    assumed.
 
-    total_pnl = sum(pnl_by_position.values())
-    return ScenarioResult(pnl_by_position=pnl_by_position, total_pnl=total_pnl)
+    Args:
+        positions: Signed EUR exposures keyed by price factor. Use
+            ``expand_spread_positions`` first so spread legs are present.
+        scenario: The scenario to apply. Factors it does not shock
+            contribute zero.
+
+    Returns:
+        Per-position and total P&L in EUR.
+    """
+    pnl_by_position = {
+        key: float(notional) * scenario.price_shocks.get(key, 0.0)
+        for key, notional in positions.items()
+    }
+    return ScenarioResult(
+        pnl_by_position=pnl_by_position,
+        total_pnl=float(sum(pnl_by_position.values())),
+    )
