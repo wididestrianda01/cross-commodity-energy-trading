@@ -33,7 +33,11 @@ commodities:
     source: "yfinance"
     mwh_per_unit: null
   GASOIL:
-    ticker: "GOC=F"
+    # GOC=F (prior mapping) carries no Yahoo contract metadata and its price
+    # history is uncorrelated with Brent, inconsistent with a refined
+    # distillate. HO=F (NYMEX ULSD heating oil) is the standard distillate
+    # proxy and shows the expected crude co-movement.
+    ticker: "HO=F"
     source: "yfinance"
     mwh_per_unit: null
   API2:
@@ -60,7 +64,7 @@ spreads:
     # Legs are quoted in different units and must be converted to USD/bbl
     # before the 2:1:3 ratio is applied.
     rbob_gal_per_bbl: 42.0        # RBOB USD/gal x 42 -> USD/bbl
-    gasoil_bbl_per_tonne: 7.45    # ICE Gasoil USD/tonne / 7.45 -> USD/bbl
+    gasoil_gal_per_bbl: 42.0      # HO=F (ULSD) USD/gal x 42 -> USD/bbl
 
 risk:
   confidence: [0.95, 0.99]

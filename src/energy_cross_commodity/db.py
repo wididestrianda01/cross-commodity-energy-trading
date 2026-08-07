@@ -69,7 +69,7 @@ def seed_commodities(conn: duckdb.DuckDBPyConnection) -> None:
     """Insert the standard commodity universe into dim_commodity.
 
     Covers Brent crude, TTF gas, EUA carbon, European power, Nord Pool,
-    API2 coal, RBOB gasoline, ICE gasoil, and EUR/USD FX.
+    API2 coal, RBOB gasoline, NYMEX ULSD heating oil, and EUR/USD FX.
 
     Args:
         conn: An active DuckDB connection with dim_commodity already created.
@@ -82,7 +82,7 @@ def seed_commodities(conn: duckdb.DuckDBPyConnection) -> None:
         ("NO1_POWER", "Nordic Power NO1 (Oslo)", "power", "EUR/MWh", 1.0, "entsoe"),
         ("API2", "API2 Rotterdam Coal", "coal", "USD/tonne", 6.978, "yfinance"),
         ("RBOB", "RBOB Gasoline", "product", "USD/gal", None, "yfinance"),
-        ("GASOIL", "ICE Gasoil", "product", "USD/tonne", None, "yfinance"),
+        ("GASOIL", "NYMEX ULSD Heating Oil", "product", "USD/gal", None, "yfinance"),
         ("EURUSD", "EUR/USD FX", "fx", "USD per EUR", None, "yfinance"),
     ]
     conn.executemany(

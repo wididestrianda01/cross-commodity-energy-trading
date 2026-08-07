@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deepened P17 notebooks with methodology, regulation, and theory.
+"""Build the analytics notebooks with methodology, regulation, and theory.
 
 Each notebook is self-contained with:
 - Executive summary
@@ -76,12 +76,12 @@ NB1.append(md("""\
 
 **Notebook 1** of the Cross-Commodity Energy Trading analytics suite.  
 This notebook characterises the statistical behaviour of nine European energy
-commodities — crude oil, natural gas, carbon allowances, power (German and
-Nordic), coal, refined products, and foreign exchange — from January 2020
+commodities (crude oil, natural gas, carbon allowances, German and Nordic
+power, coal, refined products, and foreign exchange) from January 2020
 through the present. The sample starts in 2020 because EEX publishes EUA
 auction reports from that year onward, which binds the common-date panel.
 
-## Executive Summary
+## Executive summary
 
 A European energy trading desk monitors crude oil (Brent), natural gas (TTF),
 carbon allowances (EUA), baseload power (Germany and Nord Pool), coal (API2),
@@ -93,34 +93,36 @@ The data reveal three stylised facts that matter for risk management. First,
 TTF natural gas is the most volatile instrument in the complex, with a
 coefficient of variation exceeding 100% and rolling annualised volatility
 routinely above 30%. This is structural, not incidental: gas markets lack the
-global fungibility of crude oil, so regional supply shocks — pipeline
-disruptions, storage constraints, seasonal demand swings — transmit directly
-into price. Second, every commodity except EUR/USD rejects normality in a
+global fungibility of crude oil, so a regional supply shock such as a pipeline
+outage or a storage constraint transmits directly into price rather than being
+absorbed by seaborne arbitrage. Second, every commodity except EUR/USD rejects normality in a
 Jarque-Bera test. The fat tails visible in the return histograms mean that a
 Gaussian VaR model calibrated to these data will systematically understate
-tail risk. Third, the price paths show structural divergence: German power and
-carbon trend upward through the sample, while gas and coal spend much of the
-period below their starting levels — the energy transition is visible in the
-data.
+tail risk. Third, the price paths diverge over the sample: German power and
+carbon end well above where they started, while gas and coal spend much of the
+period below their starting levels. That divergence is consistent with a
+tightening carbon price, though a six-year window cannot separate policy from
+the 2022 supply shock that dominates the middle of the sample.
 
 For a commercial trading desk these patterns are not academic. An integrated
 energy trading book spans crude, gas, and power, and its risk is driven by
 exactly these volatility and tail-risk
 characteristics. Understanding the distribution of each commodity is the
 necessary first step before constructing spreads, modelling correlations, or
-measuring portfolio risk — the subjects of Notebooks 2 through 4.
+measuring portfolio risk, the subjects of Notebooks 2 through 4.
 """))
 
 NB1.append(md("""\
-## 1. Market Microstructure — Who Trades What, Where, and Why
+## 1. Market microstructure
 
 The nine instruments in this dataset are not an arbitrary collection. Each has
 a specific market structure, trading venue, and role in the European energy
-complex. Understanding the microstructure matters because it determines
-liquidity, price formation, and the speed at which information is impounded
-into prices.
+complex. Microstructure matters here because it sets how quickly information
+reaches the price: an exchange-traded futures contract and a weekly auction do
+not respond to the same news on the same day, which shows up later in the
+correlation estimates.
 
-### Trading Venues
+### Trading venues
 
 | Commodity | Benchmark | Primary Exchange | Contract | Unit |
 |-----------|-----------|-----------------|----------|------|
@@ -131,22 +133,22 @@ into prices.
 | Nordic Power | Nord Pool System | Nasdaq Commodities | Futures | EUR/MWh |
 | Coal | API2 | ICE Futures Europe | Futures | USD/tonne |
 | Gasoline | RBOB | CME (NYMEX) | Futures | USD/gallon |
-| Gasoil | ICE Gasoil | ICE Futures Europe | Futures | USD/tonne |
+| Distillate | ULSD Heating Oil | CME (NYMEX) | Futures | USD/gallon |
 | FX | EUR/USD | CME / OTC | Futures, spot | — |
 
-### How Desks Map onto These Instruments
+### How desks map onto these instruments
 
 A typical integrated energy trading floor is organised into books that map
 onto these instruments directly. A **crude and refined products** desk trades
-Brent-linked grades and product futures, managing the crack spread — the
-margin between crude input and product output — against a refining position. A
+Brent-linked grades and product futures, managing the crack spread, the
+margin between crude input and product output, against a refining position. A
 **gas and power** desk trades TTF, NBP, and European power, managing spark and
 dark spreads as gas-fired and coal-fired generation compete in the merit
 order. A **carbon** desk manages EUA positions for both compliance surrender
 and trading, with direct exposure to the EU ETS allowance price. The panel
 assembled here is deliberately chosen to span all three.
 
-### Regulatory Data Context
+### Regulatory data context
 
 Under **REMIT II** (Regulation 2024/1106), wholesale energy market
 participants must report transactions to ACER, including OTC trades. The price
@@ -156,7 +158,7 @@ reporting granularity for organised market trades (T+1).
 """))
 
 NB1.append(md("""\
-## 2. Data Pipeline
+## 2. Data pipeline
 
 The dataset is assembled from three sources into a DuckDB star schema.
 
@@ -168,7 +170,7 @@ All prices are normalised to EUR/MWh using standard conversion factors: Brent
 at 1.628 MWh/bbl and API2 coal at 6.978 MWh/tonne. The coal factor is worth
 stating explicitly: API2 is CIF ARA coal specified at 6,000 kcal/kg NAR, which
 gives 6.978 MWh/tonne. The 8.141 MWh/tonne figure that circulates widely
-belongs to a tonne of coal equivalent at 7,000 kcal/kg — a different contract
+belongs to a tonne of coal equivalent at 7,000 kcal/kg, a different contract
 specification, and using it would overstate coal's energy content by 17%,
 flattering the dark spread throughout.
 
@@ -198,7 +200,7 @@ wide = prices.pivot(index='date', columns='commodity_key', values='price_eur_mwh
 comm_names = {
     'BRENT': 'Brent Crude', 'TTF': 'TTF Gas', 'EUA': 'EUA Carbon',
     'DE_POWER': 'DE Baseload', 'NO1_POWER': 'Nordic NO1', 'API2': 'API2 Coal',
-    'RBOB': 'RBOB Gasoline', 'GASOIL': 'ICE Gasoil', 'EURUSD': 'EUR/USD'
+    'RBOB': 'RBOB Gasoline', 'GASOIL': 'ULSD Heating Oil', 'EURUSD': 'EUR/USD'
 }
 
 print(f'Loaded {len(prices):,} rows across {wide.shape[1]} commodities')
@@ -208,7 +210,7 @@ conn.close()
 """))
 
 NB1.append(md("""\
-## 3. Summary Statistics
+## 3. Summary statistics
 
 Per-commodity descriptive statistics: count, mean, standard deviation, minimum,
 maximum, skewness, excess kurtosis, and the coefficient of variation (CV =
@@ -217,7 +219,8 @@ across instruments with different price levels.
 
 A formal Jarque-Bera test is reported for each commodity. The null hypothesis
 is that the returns are normally distributed. A p-value below 0.05 rejects
-normality — and for energy commodities, this rejection is nearly universal.
+normality, which happens for eight of the nine series here; EUR/USD is the
+only one that does not.
 The implication for risk measurement is that any model assuming Gaussian
 returns (e.g., a simple variance-covariance VaR) will misprice tail risk.
 """))
@@ -251,28 +254,28 @@ for idx, row in stats_df.iterrows():
 """))
 
 NB1.append(md("""\
-TTF gas records the highest coefficient of variation, exceeding 100% — more
+TTF gas records the highest coefficient of variation, exceeding 100%, more
 than four times that of Brent crude. The Jarque-Bera statistic for TTF is in
 the thousands, with a p-value indistinguishable from zero. This reflects the
 propensity of gas markets to experience sharp dislocations: pipeline outages,
 storage constraints, and seasonal demand swings each produce moves of several
-standard deviations. Coal (API2) and RBOB gasoline show similar patterns —
+standard deviations. Coal (API2) and RBOB gasoline show similar patterns,
 positive skewness and excess kurtosis, indicating markets where upside shocks
 dominate over the sample period.
 
 EUR/USD is the sole instrument that plausibly passes the normality test, with
 near-zero excess kurtosis and a Jarque-Bera p-value above conventional
 thresholds. This is consistent with the behaviour of a deep, liquid currency
-pair. It serves as a scaling factor for dollar-denominated contracts rather
-than a primary risk driver.
+pair. In this book it is a scaling factor for dollar-denominated contracts
+rather than a primary risk driver.
 """))
 
 NB1.append(md("""\
-## 4. Normalised Price Paths
+## 4. Normalised price paths
 
 Each commodity rebased to 100 at the start date. Normalisation removes scale
-differences — crude at 70 USD/bbl and power at 50 EUR/MWh would otherwise be
-incomparable on a single axis — and lets relative performance stand out directly.
+differences, crude at 70 USD/bbl and power at 50 EUR/MWh would otherwise be
+incomparable on a single axis, and lets relative performance stand out directly.
 """))
 
 NB1.append(code("""\
@@ -299,34 +302,35 @@ fig.show()
 """))
 
 NB1.append(md("""\
-Three structural patterns emerge from the normalised price paths. Gasoil and
-Brent track each other closely through 2023, consistent with crude as the
-dominant feedstock cost — the crack spread between them oscillates around a
-relatively stable mean. German power maintains a steady upward trajectory,
-driven by rising carbon costs and the phase-out of nuclear and coal capacity
-under the Energiewende. TTF starts the sample near multi-year lows, spikes
+Gasoil and Brent track each other closely through 2023, consistent with crude
+as the dominant feedstock cost, and the crack spread between them oscillates
+around a relatively stable mean. German power trends upward over the sample,
+alongside rising carbon costs and the phase-out of nuclear and coal capacity
+under the Energiewende. TTF starts near multi-year lows, spikes
 through 2021 into the 2022 supply crisis, then falls back from 2023 onward as
-European storage refills and LNG import capacity expands. Coal and gas spend most of the sample below their starting levels,
-reflecting the combined pressure of carbon pricing and renewable penetration.
+European storage refills and LNG import capacity expands. Coal and gas spend
+most of the sample below their starting levels.
 
-These paths are not merely descriptive — they encode the economic forces that
-Notebook 2 quantifies through spread decomposition. The widening gap between
-power and gas, for instance, is the spark spread. The Brent-gasoil gap is the
-crack spread. The carbon trajectory drives both.
+The gaps between these paths are the spreads Notebook 2 decomposes. The gap
+between power and gas is the spark spread; the Brent-gasoil gap is the crack
+spread. Carbon enters both, through the emission cost embedded in the
+generation margin.
 """))
 
 NB1.append(md("""\
-## 5. Log Returns Distribution
+## 5. Log returns distribution
 
 Log returns $r_t = \\ln(P_t / P_{t-1})$ per commodity, with a fitted normal
 distribution overlaid. The gap between the histogram and the normal curve
-reveals the presence and magnitude of fat tails — the statistical signature of
+reveals the presence and magnitude of fat tails, the statistical signature of
 markets where extreme moves occur more often than a Gaussian model predicts.
 
 For a risk manager, this visual gap is the difference between a VaR breach
 once every 100 days (as the normal distribution implies at the 99th percentile)
-and the more frequent breaches that actually occur. The t-copula model in
-Notebook 4 is designed to capture exactly this excess tail mass.
+and the more frequent breaches that actually occur. Notebook 4 handles this
+excess tail mass in the marginals, through GARCH filtering and empirical
+residual quantiles, rather than in the dependence structure: the fitted copula
+on this panel turns out to be close to Gaussian.
 """))
 
 NB1.append(code("""\
@@ -382,7 +386,7 @@ fig.show()
 """))
 
 NB1.append(md("""\
-TTF shows pronounced leptokurtosis — the histogram spikes higher at the centre
+TTF shows pronounced leptokurtosis, the histogram spikes higher at the centre
 and has heavier shoulders than the normal distribution allows. This is the
 statistical signature of a market where daily moves of \\pm5\\% are routine and
 moves of \\pm10\\% occur several times per year. RBOB and coal show similar
@@ -390,14 +394,15 @@ heavy-tailed behaviour, consistent with markets subject to supply disruptions
 and inventory cycles.
 
 EUR/USD is the only series where the normal distribution provides a visually
-reasonable fit — and even here, the Jarque-Bera test statistic is elevated by
-the large sample size. For all other commodities, the visual gap between the
-histogram bars and the red normal curve is the "fat-tail premium" that the
-copula models in Notebooks 3 and 4 are designed to price.
+reasonable fit, and even here the Jarque-Bera statistic is elevated by the
+large sample size. For every other commodity the gap between the histogram
+bars and the red normal curve is the return mass a Gaussian VaR model misses.
+Notebook 4 recovers it by drawing from empirical GARCH residual quantiles
+instead of from a normal distribution.
 """))
 
 NB1.append(md("""\
-## 6. Rolling Volatility
+## 6. Rolling volatility
 
 Annualised volatility computed as $\\sigma_{\\text{annual}} = \\sigma_{\\text{daily}}
 \\times \\sqrt{252}$ over a trailing 60-business-day window. The 60-day window is
@@ -441,26 +446,28 @@ often exceeding 40% annualised. Three regimes are visible: a pre-2022 period
 with vol in the 20–35% band, a sharp spike around mid-2022 (the gas crisis),
 and a post-2023 normalisation to 15–25% as LNG imports and storage refills
 stabilised the market. Coal (API2) is the second-most volatile commodity,
-followed by RBOB gasoline — both are markets where inventory dynamics and
+followed by RBOB gasoline, both are markets where inventory dynamics and
 supply disruptions produce episodic volatility clusters.
 
 Carbon shows a steady volatility increase from 2020 onward, consistent with the
 tightening EU ETS cap under Phase IV. Brent and EUR/USD are the calmest series
-throughout. The 2022 spike in TTF vol is not an artefact of the data — it
-corresponds to the period when TTF traded from €70 to €340/MWh and back within
-six months, a move that would be a roughly 15-sigma event under the pre-2022
-volatility distribution.
+throughout. The 2022 spike in TTF volatility corresponds to the period when TTF
+traded from roughly €70 to €340/MWh and back within six months. Scaled by the
+pre-2022 volatility regime of 20–35% annualised, a cumulative move of that size
+over six months sits around seven standard deviations, which is the practical
+argument for a conditional volatility model: an unconditional estimate fitted
+across the whole sample would have called this impossible on the day it began.
 """))
 
 NB1.append(md("""\
-## 7. Stationarity Tests
+## 7. Stationarity tests
 
 The Augmented Dickey-Fuller (ADF) test evaluates the null hypothesis that a
-unit root is present — i.e., that the price series is non-stationary. For
+unit root is present, i.e., that the price series is non-stationary. For
 energy commodities, price levels are typically non-stationary (they do not
 revert to a fixed mean), but log returns should be stationary. This matters
-because most econometric models — including the GARCH and DCC specifications
-in Notebooks 3 and 4 — assume stationary input series.
+because most econometric models, including the GARCH and DCC specifications
+in Notebooks 3 and 4, assume stationary input series.
 """))
 
 NB1.append(code("""\
@@ -479,14 +486,14 @@ for col in wide.columns:
 
 NB1.append(md("""\
 For every commodity in the panel, price levels fail to reject the unit root
-null — this is expected for traded assets. Log returns uniformly reject the
+null; this is expected for traded assets. Log returns uniformly reject the
 unit root null at the 1% level, confirming stationarity. The GARCH and copula
 models in Notebooks 3 and 4 are therefore applied to these stationary return
 series, satisfying the distributional assumptions of the estimators.
 """))
 
 NB1.append(md("""\
-## 8. Key Findings
+## 8. Findings
 
 1. **TTF gas is the most volatile commodity in the complex**, with a
    coefficient of variation above 100% and rolling vol routinely exceeding
@@ -495,21 +502,22 @@ NB1.append(md("""\
 
 2. **Every commodity except EUR/USD rejects normality** in a Jarque-Bera test.
    The excess kurtosis visible in the return distributions means a Gaussian
-   VaR model systematically understates tail risk. The copula framework in
-   Notebook 4 addresses this directly.
+   VaR model systematically understates tail risk. Notebook 4 handles this in
+   the marginals, by simulating from empirical GARCH residual quantiles.
 
-3. **Price paths show structural divergence.** German power and carbon trend
-   upward throughout the sample, while coal and gas trade below starting
-   levels for most of the period. This divergence encodes the economic forces
-   — carbon pricing and renewable penetration — that the spread analysis in
-   Notebook 2 quantifies.
+3. **Price paths diverge over the sample.** German power and carbon end above
+   where they started, while coal and gas trade below starting levels for most
+   of the period. The gaps between these paths are the spreads that Notebook 2
+   decomposes into fuel and carbon cost.
 
 4. **Returns are stationary.** The ADF test confirms that log-return series
    are suitable for the GARCH and DCC models that follow.
 
 5. **Volatility clusters are regime-dependent.** TTF volatility tripled during
    the 2022 gas crisis relative to pre-2022 levels. A constant-volatility
-   model would have been catastrophically wrong during this period.
+   model calibrated before the crisis would have understated risk throughout
+   it, and one calibrated across the full sample overstates risk in the calm
+   years either side.
 
 The next notebook examines how these commodities interact through the three
 core cross-commodity spreads: spark, dark, and crack.
@@ -525,10 +533,10 @@ NB1.append(md("""\
 - Regulation (EU) 2024/1106 (REMIT II). *On wholesale energy market integrity and transparency*.
 - Said, S.E. & Dickey, D.A. (1984). "Testing for unit roots in autoregressive-moving average models of unknown order." *Biometrika*, 71(3), 599–607.
 
-## PDF Export
+## PDF export
 
-To export this notebook as a PDF for offline reading or recruiter submission,
-run the cell below. Requires a LaTeX installation (`texlive-xetex` recommended)
+To export this notebook as a PDF for offline reading, run the cell below.
+Requires a LaTeX installation (`texlive-xetex` recommended)
 and `nbconvert`:
 
 ```bash
@@ -551,13 +559,14 @@ print("PDF export: uncomment the line above and run to generate docs/notebooks/0
 NB2 = []
 
 NB2.append(md("""\
-# Spread Economics — Spark, Dark, Crack & Fuel Switching
+# Spread Economics: Spark, Dark, Crack and Fuel Switching
 
-**Notebook 2** of the Cross-Commodity Energy Trading analytics suite.  
-This notebook analyses the four core cross-commodity spreads that drive
-dispatch decisions and trading strategies in European energy markets.
+**Notebook 2** of the Cross-Commodity Energy Trading analytics suite.
+This notebook analyses the three core cross-commodity spreads that drive
+dispatch decisions in European energy markets, together with the
+fuel-switching signal derived from two of them.
 
-## Executive Summary
+## Executive summary
 
 The profitability of a gas-fired power plant, a coal-fired power plant, and a
 crude oil refinery can each be expressed as a single number: the spread
@@ -566,74 +575,88 @@ markets, three spreads dominate trading and dispatch decisions.
 
 The **clean spark spread** measures the gross margin of a combined-cycle gas
 turbine after fuel and carbon costs. The **clean dark spread** is the coal
-analogue — identical in structure, but with a carbon cost that is roughly
-2.5 times larger per MWh because coal emits more CO2 per unit of thermal
-energy. The **3-2-1 crack spread** approximates a refiner's margin from
-processing crude into gasoline and gasoil.
+analogue, identical in structure but carrying a carbon cost roughly
+2.5 times larger per MWh of electricity, because coal emits more CO2 per unit
+of thermal energy and burns it at lower efficiency. The **3-2-1 crack spread**
+approximates a refiner's margin from processing crude into gasoline and gasoil.
 
-These spreads are not independent. They are linked through the **merit order** —
-the ranking of generation capacity by marginal cost — and through the EU
+These spreads are not independent. They are linked through the **merit order**,
+the ranking of generation capacity by marginal cost, and through the EU
 Emissions Trading System (EU ETS), which imposes a carbon cost on every
-fossil-fuel MWh. The **fuel-switching signal** — the difference between the
-spark and dark spreads — measures whether gas or coal is the cheaper marginal
-fuel. When this signal crosses zero, the entire merit order re-stacks,
-changing which fuel sets the power price.
+fossil-fuel MWh. The **fuel-switching signal**, the difference between the
+spark and dark spreads, measures whether gas or coal is the cheaper marginal
+fuel. When this signal crosses zero the merit order re-stacks, changing which
+fuel sets the power price.
 
 Each spread maps to a specific commercial activity. A gas and power desk
 manages spark and dark spread exposure through physical generation and
 financial hedging. A crude and products desk manages the crack spread against
 its refining position. A carbon desk manages the EUA positions that flow
-through every spread calculation. A trading strategy that ignored these
-cross-commodity linkages would miss the single largest driver of spread P&L.
+through every spread calculation. Treating any of these legs as an
+independent position misprices the spread, because the carbon leg is common
+to all of them.
 """))
 
 NB2.append(md("""\
-## 1. The EU Emissions Trading System — A Primer
+## 1. The EU Emissions Trading System
 
 Before computing spreads, it is worth understanding the regulatory mechanism
 that makes the "clean" spreads meaningful. The EU ETS is a cap-and-trade
 system covering roughly 40% of EU greenhouse gas emissions.
 
-### Cap-and-Trade Mechanics
+### Cap-and-trade mechanics
 
 - **Cap**: Total allowances (EUAs) are capped at the EU level and decline
-  annually. The Linear Reduction Factor is 4.3% from 2024, increasing to 4.7%
-  from 2028 — meaning the cap tightens by roughly 4.3 million allowances per
-  year.
+  annually. Directive (EU) 2023/959 sets the Linear Reduction Factor at 4.3%
+  for 2024–2027 and 4.4% from 2028, applied to a fixed reference quantity, so
+  the cap falls by a constant 88 million allowances a year against a 2024 cap
+  of 1.386 billion.
 - **Trade**: Allowances are auctioned (power sector, since 2013) or freely
   allocated (industry, at risk of carbon leakage). One EUA permits the holder
   to emit one tonne of CO2.
-- **MSR (Market Stability Reserve)**: Absorbs 24% of the TNAC (Total Number of
-  Allowances in Circulation) annually, reducing the historical surplus. From
-  2023, holdings above the auction volume threshold are invalidated — a
-  structural tightening mechanism.
+- **MSR (Market Stability Reserve)**: When the TNAC (Total Number of Allowances
+  in Circulation) exceeds 1,096 million, the reserve withdraws 24% of it from
+  auctions over the following twelve months; below 400 million it releases
+  100 million back. Decision (EU) 2023/852 held the intake rate at 24% through
+  2030. Allowances sitting in the reserve above 400 million are invalidated
+  each year, which permanently removes them from supply. The Commission
+  proposed ending that invalidation step in April 2026.
 
-### Carbon Pass-Through to Power Prices
+### Carbon pass-through to power prices
 
-The carbon cost is passed through to electricity prices because the marginal
-generator — typically a gas or coal plant — must surrender EUAs for each MWh
-it produces. Empirically, the pass-through rate is approximately 80–100%
-(Sijm et al., 2006). Even infra-marginal generators (renewables, nuclear)
-receive the carbon-inclusive power price, producing what is termed "carbon
-rent" or windfall profit.
+The carbon cost reaches electricity prices because the marginal generator, a
+gas or coal plant in most hours, must surrender EUAs for each MWh it produces.
+Sijm, Neuhoff and Chen (2006) estimate pass-through rates between 60% and 100%
+for the German and Dutch wholesale markets, varying with the marginal fuel and
+the sample period. Note that these are conditional estimates: pass-through
+cannot be read off the raw correlation between EUA and power prices, since gas
+moves both, and the unconditional EUA-power return correlation in this sample
+is close to zero (Notebook 3). Infra-marginal generators (renewables, nuclear)
+receive the carbon-inclusive power price without the carbon cost, which is the
+"carbon rent" the free-allocation debate turns on.
 
-### Carbon Price Trajectory
+### Carbon price trajectory
 
 - 2018–2020: €5–30/t (oversupplied)
 - 2021–2023: €50–100/t (MSR tightening, gas crisis)
-- 2024–2026: €60–90/t (stabilising)
-- EU Fit-for-55 target: €100–150+/t implied by 2030
+- 2024–2026: €60–90/t
+- Commission Fit-for-55 impact-assessment modelling implies roughly
+  €100–150/t by 2030, though this is a scenario output, not a policy target
 
-The P17 stress scenario "Energy Transition" (Notebook 4) is calibrated to
-€150/t — the upper end of this range.
+The "Energy Transition" stress scenario in Notebook 4 is calibrated to €150/t,
+the upper end of that modelled range.
 
-### CBAM — The Global Dimension
+### CBAM and the global dimension
 
-The Carbon Border Adjustment Mechanism, effective 2026, requires importers of
-cement, iron/steel, aluminium, fertilisers, and electricity to purchase CBAM
-certificates at the EU ETS price. This transforms carbon from a European
-regulatory cost into a global trade factor — and increases the relevance of
-carbon spread modelling for any firm with cross-border energy exposure.
+The Carbon Border Adjustment Mechanism entered its definitive phase on
+1 January 2026. Importers of cement, iron and steel, aluminium, fertilisers,
+electricity and hydrogen above a 50-tonne annual threshold must surrender CBAM
+certificates against the embedded emissions of what they bring in. The
+certificate price tracks the weighted average EU ETS auction clearing price,
+published quarterly through 2026 and weekly from 2027: €75.36 for Q1 2026 and
+€75.28 for Q2. CBAM therefore extends the EUA price into import costs, which
+makes the carbon leg of these spreads relevant to firms whose exposure is not
+otherwise European.
 """))
 
 NB2.append(code(COMMON_IMPORTS + """
@@ -658,7 +681,7 @@ print(f'Loaded {len(prices_pivot)} trading days, {prices_pivot.date.min().date()
 """))
 
 NB2.append(md("""\
-## 2. Clean Spark Spread
+## 2. Clean spark spread
 
 The clean spark spread (CSS) measures the gross margin of a gas-fired power
 plant after fuel and carbon costs:
@@ -673,14 +696,14 @@ the EU ETS Monitoring and Reporting Regulation).
 The thermal efficiency assumption matters. At $\\eta = 0.50$ (an older plant),
 gas input per MWh rises to 2.0 MWh, increasing the fuel cost by roughly 10%.
 At $\\eta = 0.60$ (a brand-new H-class turbine), it drops to 1.67 MWh. The
-spread therefore embeds a plant-specific efficiency assumption — on a real
+spread therefore embeds a plant-specific efficiency assumption, on a real
 desk, the trader models the specific plant, not an industry average.
 
 Regimes are classified as:
-- **RUN**: CSS > 0 — the plant is in-the-money.
-- **MARGINAL**: −20 to 0 EUR/MWh — near break-even; start-up costs may
+- **RUN**: CSS > 0, the plant is in-the-money.
+- **MARGINAL**: −20 to 0 EUR/MWh, near break-even; start-up costs may
   determine the dispatch decision.
-- **IDLE**: < −20 EUR/MWh — the plant loses money running.
+- **IDLE**: < −20 EUR/MWh, the plant loses money running.
 """))
 
 NB2.append(code("""\
@@ -745,7 +768,7 @@ later years, when German power prices rose faster than gas. The IDLE regime
 dominates during the early COVID period, when gas prices spiked relative to
 power. From 2023 onward the spread stays mostly positive.
 
-The August 2022 gas crisis — when real TTF exceeded €300/MWh — produced spark
+The August 2022 gas crisis, when real TTF exceeded €300/MWh, produced spark
 spreads below −200 EUR/MWh. While this synthetic dataset does not capture that
 extremity, the direction of the spread during gas-driven price spikes is
 economically consistent: the spark spread inverts when gas, not power, is the
@@ -753,7 +776,7 @@ source of the shock.
 """))
 
 NB2.append(md("""\
-## 3. Clean Dark Spread
+## 3. Clean dark spread
 
 The clean dark spread (CDS) is the coal-plant analogue:
 
@@ -763,7 +786,7 @@ P_{\\text{carbon}} \\times \\text{EF}_{\\text{coal}}$$
 Coal plants operate at lower thermal efficiency ($\\eta = 0.38$, roughly 38%)
 and emit approximately 2.4 times the CO2 per MWh (emission factor 0.90 tCO2/MWh
 for hard coal). The carbon cost component is therefore structurally larger for
-coal — at €80/t carbon, the coal carbon cost is €72/MWh versus €30/MWh for gas.
+coal, at €80/t carbon, the coal carbon cost is €72/MWh versus €30/MWh for gas.
 
 The carbon cost decomposition below separates the spread into its fuel and
 carbon components, revealing the growing dominance of carbon in the total cost
@@ -807,7 +830,7 @@ fig.add_trace(go.Scatter(
 ), row=2, col=1)
 
 fig.update_layout(
-    title=dict(text='Clean Dark Spread — Carbon Cost Decomposition', font=dict(color=NAVY, size=16)),
+    title=dict(text='Clean Dark Spread, Carbon Cost Decomposition', font=dict(color=NAVY, size=16)),
     plot_bgcolor=OFFWHITE, paper_bgcolor=OFFWHITE,
     height=600, margin=dict(l=50, r=50, t=60, b=40),
     hovermode='x unified', showlegend=True, legend=dict(orientation='h', y=1.08),
@@ -822,7 +845,7 @@ print(f'Carbon cost share of total cost: {(df_dark.carbon_cost / (df_dark.fuel_c
 """))
 
 NB2.append(md("""\
-The dark spread is structurally negative for most of the sample — coal plants
+The dark spread is structurally negative for most of the sample, coal plants
 would lose money running baseload for the majority of trading days. The carbon
 cost component grows from roughly 15 EUR/MWh in 2020 to approximately 40
 EUR/MWh by 2024, driven by rising EUA prices. By late 2024, carbon accounts
@@ -830,14 +853,14 @@ for roughly a third of total generation cost for a coal plant.
 
 From 2023 onward, the dark spread occasionally turns positive. These windows
 are brief but economically significant: they represent periods where power
-prices are high enough to absorb the carbon premium, and coal — despite its
-higher carbon cost — becomes the marginal price-setting technology. These are
+prices are high enough to absorb the carbon premium, and coal, despite its
+higher carbon cost, becomes the marginal price-setting technology. These are
 precisely the periods where the fuel-switching signal (Section 5) becomes
 actionable.
 """))
 
 NB2.append(md("""\
-## 4. 3-2-1 Crack Spread
+## 4. 3-2-1 Crack spread
 
 The 3-2-1 crack spread approximates a refiner's gross margin from processing
 three barrels of crude into two barrels of gasoline and one barrel of gasoil:
@@ -846,7 +869,7 @@ $$\\text{Crack}_{3:2:1} = \\frac{2 \\times P_{\\text{RBOB}} + 1 \\times
 P_{\\text{Gasoil}} - 3 \\times P_{\\text{Brent}}}{3}$$
 
 This is a simplified representation of refinery economics. A real refinery
-produces a full product slate — LPG, naphtha, jet fuel, diesel, fuel oil — and
+produces a full product slate, LPG, naphtha, jet fuel, diesel, fuel oil, and
 the actual margin depends on the specific crude grade, refinery configuration
 (Nelson complexity index), and operating costs. The 3-2-1 crack is the
 industry-standard shorthand because gasoline and gasoil are the two
@@ -858,11 +881,11 @@ Desks with such a position hedge the refining margin using crack spread
 derivatives, and the 3-2-1 is the benchmark against which that hedging is
 measured.
 
-### Seasonal Decomposition
+### Seasonal decomposition
 
 The crack spread exhibits a predictable seasonal pattern driven by gasoline
 demand in summer and heating oil demand in winter. STL decomposition
-(Cleveland et al., 1990) — Seasonal-Trend decomposition using Loess —
+(Cleveland et al., 1990), Seasonal-Trend decomposition using Loess,
 separates the series into trend, seasonal, and residual components. The method
 uses locally weighted regression (Loess) to estimate each component
 iteratively, handling the 252-trading-day annual period.
@@ -899,7 +922,7 @@ for i, (name, series) in enumerate([
         fig.add_hline(y=0, line_dash='dash', line_color='#999999', row=row, col=1)
 
 fig.update_layout(
-    title=dict(text='3-2-1 Crack Spread — STL Decomposition (252-day period)', font=dict(color=NAVY, size=16)),
+    title=dict(text='3-2-1 Crack Spread, STL Decomposition (252-day period)', font=dict(color=NAVY, size=16)),
     plot_bgcolor=OFFWHITE, paper_bgcolor=OFFWHITE,
     height=750, margin=dict(l=50, r=50, t=60, b=40),
 )
@@ -915,7 +938,7 @@ print(f'Seasonal amplitude (peak-to-trough): {(decomp.seasonal.max() - decomp.se
 NB2.append(md("""\
 The crack spread trend exhibits a U-shaped pattern: a structural decline from
 2020 to a trough around 2021–2022, followed by a sharp recovery through 2024–
-2025. The seasonal component is modest — roughly ±10 units around the trend —
+2025. The seasonal component is modest, roughly ±10 units around the trend,
 suggesting that the crack is driven more by crude-to-product spread dynamics
 than by predictable seasonal demand patterns. The residual component spikes
 during the 2020 COVID period, consistent with the extreme dislocation in
@@ -925,12 +948,12 @@ The trend recovery from 2023 onward reflects a tightening product market:
 refinery closures during COVID reduced global capacity, and the post-pandemic
 demand recovery met reduced supply. This is the structural factor that
 refining analysts track through capacity utilisation rates and product
-inventory levels — data that, in a production system, would supplement the
+inventory levels, data that, in a production system, would supplement the
 price-based crack spread shown here.
 """))
 
 NB2.append(md("""\
-## 5. Fuel-Switching Signal
+## 5. Fuel-Switching signal
 
 The fuel-switching signal is the difference between the spark and dark
 spreads:
@@ -940,26 +963,26 @@ $$\\text{Signal} = \\text{CSS} - \\text{CDS}$$
 A positive signal means gas-fired generation is more profitable than coal at
 the margin. A negative signal favours coal. The switching zone
 (±5 EUR/MWh) captures days where the two technologies are at approximate
-parity — small changes in gas, coal, or carbon prices can flip the marginal
+parity, small changes in gas, coal, or carbon prices can flip the marginal
 fuel.
 
-### Merit Order Economics
+### Merit order economics
 
 The merit order ranks generation by short-run marginal cost (SRMC). Renewables
 and nuclear, with near-zero SRMC, are dispatched first. Gas and coal compete
 for the residual demand. The fuel-switching signal captures which technology
 is cheaper at the margin:
 
-- When $\\text{Signal} > 0$, gas is cheaper — gas plants sit below coal in the
+- When $\\text{Signal} > 0$, gas is cheaper, gas plants sit below coal in the
   merit order, and gas sets the marginal price.
-- When $\\text{Signal} < 0$, coal is cheaper — coal sets the marginal price.
+- When $\\text{Signal} < 0$, coal is cheaper, coal sets the marginal price.
   This became rare post-2021 as carbon prices rose, but the 2024 windows show
   it still occurs when power prices are high enough.
 
 The carbon cost asymmetry drives most of the switching dynamics. At an EUA
 price of €80/t, the carbon cost difference is roughly €42/MWh in favour of
 gas. For coal to be competitive, the coal fuel price must be sufficiently
-below the gas fuel price to overcome this carbon disadvantage — a condition
+below the gas fuel price to overcome this carbon disadvantage, a condition
 that held briefly in 2024 when TTF was elevated relative to API2.
 """))
 
@@ -1042,11 +1065,11 @@ makes fuel-switching a genuine trading signal rather than a one-way bet.
 """))
 
 NB2.append(md("""\
-## 6. Thermal Efficiency Sensitivity
+## 6. Thermal efficiency sensitivity
 
 The spark and dark spreads embed plant efficiency assumptions that materially
 affect the results. Below, the spark spread is recomputed across a range of
-efficiencies — from 0.48 (an older single-cycle gas turbine) to 0.62 (a
+efficiencies, from 0.48 (an older single-cycle gas turbine) to 0.62 (a
 cutting-edge H-class CCGT). The sensitivity analysis quantifies how much the
 spread changes per percentage point of efficiency.
 """))
@@ -1076,7 +1099,7 @@ print(f"\\nApprox. sensitivity: {gradient:.1f} EUR/MWh per 1% efficiency change"
 """))
 
 NB2.append(md("""\
-## 7. Key Findings
+## 7. Findings
 
 1. **Spark spread regimes are time-varying.** The spread is positive for the
    majority of trading days from 2023 onward but was deeply negative during
@@ -1097,10 +1120,10 @@ NB2.append(md("""\
 
 5. **Spread calculations embed plant efficiency assumptions** that matter.
    A 1% change in thermal efficiency shifts the spark spread by roughly
-   0.5 EUR/MWh — material for a plant operating on thin margins.
+   0.5 EUR/MWh, material for a plant operating on thin margins.
 
 The next notebook examines how correlations between these commodities change
-over time — and what happens to these relationships during a crisis.
+over time, and what happens to these relationships during a crisis.
 """))
 
 NB2.append(md("""\
@@ -1112,7 +1135,7 @@ NB2.append(md("""\
 - Sijm, J., Neuhoff, K., & Chen, Y. (2006). "CO2 cost pass-through and windfall profits in the power sector." *Climate Policy*, 6(1), 49–72.
 - Burger, M., Graeber, B., & Schindlmayr, G. (2014). *Managing Energy Risk* (2nd ed.). Wiley.
 
-## PDF Export
+## PDF export
 """))
 
 NB2.append(code("""\
@@ -1129,16 +1152,16 @@ print("PDF export: uncomment the line above and run to generate docs/notebooks/0
 NB3 = []
 
 NB3.append(md("""\
-# Correlation & Regime Shifts — Commodity Dependence Under Stress
+# Correlation and Regime Shifts: Commodity Dependence Under Stress
 
 **Notebook 3** of the Cross-Commodity Energy Trading analytics suite.  
-This notebook examines how cross-commodity correlations behave — and break —
+This notebook examines how cross-commodity correlations behave, and break,
 during market stress, using the 2022 European gas crisis as the natural
 experiment.
 
-## Executive Summary
+## Executive summary
 
-Linear correlation is the most commonly used dependence measure in finance —
+Linear correlation is the most commonly used dependence measure in finance,
 and the most dangerous when taken at face value. Energy commodity correlations
 are not constant. They shift, sometimes violently, during supply disruptions,
 geopolitical events, and financial crises. A correlation matrix estimated
@@ -1146,38 +1169,38 @@ during a calm period will be wrong during the crisis, and the VaR model that
 depends on it will be wrong when it matters most.
 
 This notebook traces three layers of increasing sophistication. First,
-unconditional Pearson correlation — the standard correlation matrix — is
+unconditional Pearson correlation, the standard correlation matrix, is
 estimated over the full sample. It shows that Brent and gasoil cluster
 together (the crude-to-products link), while TTF, EUA, and German power form
 a European energy bloc. But this static picture masks the dynamics that matter.
 
-Second, a rolling 60-day window reveals that the TTF—German power correlation
+Second, a rolling 60-day window reveals that the TTF and German power correlation
 ranges from near zero to above 0.70, depending on the period. The correlation
-spikes during the 2022 crisis — but the rolling window needs 25–30 days to
+spikes during the 2022 crisis, but the rolling window needs 25–30 days to
 reflect the new dependence structure, during which risk decisions are based on
 stale data.
 
 Third, DCC-GARCH (Engle, 2002) estimates time-varying correlations that react
 to new information within days. The DCC catches the 2022 regime shift roughly
 three days after it begins, versus the rolling window's three weeks. The gap
-between the two — visible in the overlay chart — is the cost of using
+between the two, visible in the overlay chart, is the cost of using
 backward-looking correlation estimates in a forward-looking risk system.
 
 Finally, a t-copula is fitted to the standardised returns. The copula captures
-tail dependence — the probability of joint extreme moves — that a Gaussian
+tail dependence, the probability of joint extreme moves, that a Gaussian
 correlation matrix (even a dynamic one) would peg at zero. The fitted degrees
 of freedom parameter ($\\nu$) quantifies the heaviness of the joint tails. A
 value far from infinity (the Gaussian limit) confirms that tail dependence is
 real and material for energy commodities.
 
-For a risk manager subject to EMIR margin rules — where initial margin is
-calibrated to a 99% confidence level over a 10-day closeout period — the
+For a risk manager subject to EMIR margin rules, where initial margin is
+calibrated to a 99% confidence level over a 10-day closeout period, the
 choice between a Gaussian and t-copula dependence model is not academic. It
 determines the amount of collateral posted.
 """))
 
 NB3.append(md("""\
-## 1. The 2022 European Gas Crisis — Timeline
+## 1. Timeline of the 2022 European gas crisis
 
 The Russian invasion of Ukraine on 24 February 2022 triggered the most severe
 energy market dislocation in European history. A timeline of the key events:
@@ -1195,7 +1218,7 @@ energy market dislocation in European history. A timeline of the key events:
 
 The Nord Stream sabotage on 26 September 2022 is the structural break: before
 this date, residual Russian gas flowed to Europe; afterward, zero. The
-correlation between gas and power — already elevated — tightened to near
+correlation between gas and power, already elevated, tightened to near
 perfect comovement. A position that was diversified across gas and power
 before the invasion became, within weeks, a concentrated bet on a single risk
 factor.
@@ -1221,7 +1244,7 @@ prices = conn.execute(
 pivot = prices.pivot(index="date", columns="commodity_key", values="price_native")
 
 # Displaced log returns. A plain log ratio is undefined on the days power
-# clears below zero, and pandas would drop them as NaN — silently deleting the
+# clears below zero, and pandas would drop them as NaN, silently deleting the
 # exact oversupply days a correlation study needs to see.
 displacements = OmegaConf.to_container(cfg.risk.price_displacement_eur, resolve=True)
 returns = compute_log_returns(pivot, displacements)
@@ -1236,14 +1259,14 @@ conn.close()
 """))
 
 NB3.append(md("""\
-## 2. Unconditional Correlation Matrix
+## 2. Unconditional correlation matrix
 
 The full-sample Pearson correlation matrix across the energy complex. Brent
-and products (RBOB, GASOIL) cluster together — these are the crude-to-products
+and products (RBOB, GASOIL) cluster together; these are the crude-to-products
 relationships. TTF, EUA, and DE_POWER form a European energy bloc with
 moderate cross-links to crude.
 
-This static matrix is the starting point for almost every portfolio risk model —
+This static matrix is the starting point for almost every portfolio risk model,
 and it is the most misleading single number in risk management. The sections
 that follow demonstrate why.
 """))
@@ -1272,22 +1295,22 @@ print(f"  Energy bloc (TTF-EUA-DE_POWER):    mean ρ = {corr_matrix.loc[['TTF','
 """))
 
 NB3.append(md("""\
-## 3. Rolling Correlation — TTF vs. German Power
+## 3. Rolling correlation: TTF against German power
 
 TTF (Dutch natural gas) and German baseload power share a structural link:
 gas-fired plants are often the marginal price-setter. When gas becomes more
-expensive, power prices rise — the correlation should be positive.
+expensive, power prices rise, the correlation should be positive.
 
 A rolling 60-day window reveals how this relationship varies. The window
 length is a desk convention: 60 days (roughly one quarter) is long enough to
 smooth daily noise, short enough to reflect changing market conditions. But
-the window length itself is a modelling choice — and the choice matters
+the window length itself is a modelling choice, and the choice matters
 enormously during a regime shift.
 
 The RiskMetrics technical document (J.P. Morgan, 1996) recommends an
 exponentially weighted moving average (EWMA) with decay factor $\\lambda =
 0.94$ as an alternative. The EWMA gives more weight to recent observations,
-so it adapts faster than equal-weighted rolling windows — but still lags the
+so it adapts faster than equal-weighted rolling windows, but still lags the
 DCC-GARCH shown in Section 4.
 """))
 
@@ -1314,7 +1337,7 @@ fig2.add_annotation(x="2022-06-01", y=0.95, text="2022 Crisis", showarrow=False,
     font=dict(size=11, color=RED))
 
 fig2.update_layout(
-    title=f"TTF vs. DE_POWER — Rolling {window}-Day Correlation",
+    title=f"TTF vs. DE_POWER, Rolling {window}-Day Correlation",
     height=400, margin=dict(l=40, r=20, t=50, b=40),
     xaxis_title="", yaxis_title="Correlation",
     yaxis=dict(range=[-0.5, 1.0], tickformat=".2f"),
@@ -1334,15 +1357,15 @@ the rolling window smooths the transition: the correlation takes weeks to
 fully reflect the new regime, during which it systematically understates the
 true dependence between gas and power returns.
 
-This lag is not a defect of the rolling window — it is inherent to any
+This lag is not a defect of the rolling window; it is inherent to any
 backward-looking equal-weighted estimator. The DCC-GARCH model in the next
 section is designed to eliminate it.
 """))
 
 NB3.append(md("""\
-## 4. DCC-GARCH — Dynamic Conditional Correlation
+## 4. DCC-GARCH: dynamic conditional correlation
 
-### Model Specification (Engle, 2002)
+### Model specification (Engle, 2002)
 
 The DCC-GARCH model decomposes the conditional covariance matrix into
 volatilities and correlations:
@@ -1379,10 +1402,10 @@ One implementation detail matters more than it looks: correlation targeting
 sets $\\bar{Q}$ to the sample **correlation** matrix of the standardised
 residuals, not their covariance matrix. Standardised residuals have unit
 variance only in expectation, so in a finite sample the two differ, and using
-the covariance leaves $R_t$ with off-unit diagonal entries — a "correlation"
+the covariance leaves $R_t$ with off-unit diagonal entries, a "correlation"
 matrix whose diagonal is not 1.
 
-### Why DCC Matters for Trading
+### Why DCC matters for trading
 
 The distinction between a backward-looking rolling correlation and a
 forward-adaptive DCC correlation is not academic. During the 2022 crisis:
@@ -1434,7 +1457,7 @@ if dcc_dates.min() <= aug2022 <= dcc_dates.max():
 
 fig3.add_hline(y=0, line_dash="dot", line_color="gray", opacity=0.4)
 fig3.update_layout(
-    title="TTF vs. DE_POWER — DCC-GARCH vs. Rolling Correlation",
+    title="TTF vs. DE_POWER, DCC-GARCH vs. Rolling Correlation",
     height=420, margin=dict(l=40, r=20, t=50, b=40),
     xaxis_title="", yaxis_title="Correlation",
     yaxis=dict(range=[-0.6, 1.0], tickformat=".2f"),
@@ -1444,7 +1467,7 @@ fig3.show()
 """))
 
 NB3.append(md("""\
-## 5. The 2022 Regime Shift — Pre/Post Invasion Correlation
+## 5. The 2022 regime shift: correlation before and after the invasion
 
 The Russian invasion of Ukraine created a structural break in the European
 energy correlation matrix. Before 24 February 2022, TTF and German power had
@@ -1453,7 +1476,7 @@ gas became the dominant driver of European power prices.
 
 The pre/post correlation matrices below quantify the regime shift. The delta
 matrix (post minus pre) reveals which pairwise correlations changed most:
-TTF–DE_POWER, BRENT–TTF, and EUA–DE_POWER all increased sharply — the entire
+TTF–DE_POWER, BRENT–TTF, and EUA–DE_POWER all increased sharply, the entire
 energy complex tightened its co-movement.
 """))
 
@@ -1502,7 +1525,7 @@ print(f"\\nTTF-DE_POWER: {pre_corr.at['TTF','DE_POWER']:.3f} → {post_corr.at['
 """))
 
 NB3.append(md("""\
-## 6. t-Copula Tail Dependence
+## 6. t-Copula tail dependence
 
 ### Why Copulas?
 
@@ -1547,7 +1570,7 @@ makes this the *copula* density rather than the joint t density; omitting that
 term would make the objective depend on the margins and destroy the
 transform-invariance the rank step was there to secure.
 
-### Tail Dependence Coefficient
+### Tail dependence coefficient
 
 The tail dependence coefficient is defined as a **limit**, not as a
 probability at any particular threshold:
@@ -1556,13 +1579,13 @@ $$\\lambda_L = \\lim_{q \\to 0^+} \\Pr\\!\\left[U_2 \\le q \\mid U_1 \\le q\\rig
 
 that is, the limiting probability that one asset breaches its $q$-quantile
 given that the other already has, as $q$ is pushed to the extreme. For the
-t-copula this limit has a closed form, and it is radially symmetric — the
+t-copula this limit has a closed form, and it is radially symmetric, the
 lower and upper coefficients are equal:
 
 $$\\lambda_U = \\lambda_L = 2\\, t_{\\nu+1}\\left(-\\sqrt{\\frac{(\\nu+1)(1-\\rho)}{1+\\rho}}\\right)$$
 
 A Gaussian copula (the limit as $\\nu \\to \\infty$) has $\\lambda = 0$ exactly
-for any $\\rho < 1$ — not approximately zero, but identically zero. This is the
+for any $\\rho < 1$, not approximately zero, but identically zero. This is the
 catastrophic failure mode: under Gaussian assumptions, extreme events in Brent
 and TTF become asymptotically independent in the tails even at a correlation
 of 0.6. Under a t-copula with $\\nu = 5$, the same correlation implies
@@ -1573,7 +1596,7 @@ quote.
 
 For a trading desk with positions in both commodities, the difference between
 $\\lambda = 0$ and $\\lambda \\approx 0.27$ is the difference between a diversified
-portfolio and a concentrated one — during exactly the stress event when
+portfolio and a concentrated one, during exactly the stress event when
 diversification is needed most.
 """))
 
@@ -1607,15 +1630,15 @@ print(f"Top tail-dependent pair: {td_table.iloc[0]['Commodity A']}-{td_table.ilo
 """))
 
 NB3.append(md("""\
-## 7. t-Copula vs. Gaussian Contours — TTF vs. Power
+## 7. t-copula against Gaussian contours: TTF and power
 
 The scatter of standardised returns tells the tail-dependence story visually.
-The t-copula 95% confidence contour (solid navy) fans out into the corners —
+The t-copula 95% confidence contour (solid navy) fans out into the corners,
 it expects joint extremes. The Gaussian 95% contour (dashed red) stays tight,
 missing the points in the bottom-left and top-right quadrants.
 
 The points outside the Gaussian ellipse but inside the t-copula ellipse are
-not outliers — they are expected behaviour under the correct dependence model.
+not outliers; they are expected behaviour under the correct dependence model.
 A risk manager using Gaussian assumptions would systematically underestimate
 the probability of gas and power crashing together.
 """))
@@ -1657,7 +1680,7 @@ print(f"Points outside t-copula 95% ellipse:  {outside_t} ({outside_t/len(ttf_st
 print(f"Additional joint extremes captured by t-copula: {outside_g - outside_t}")
 
 fig6.update_layout(
-    title=f"TTF vs. German Power — 95% Confidence Contours (ρ = {rho:.3f})",
+    title=f"TTF vs. German Power, 95% Confidence Contours (ρ = {rho:.3f})",
     height=500, width=550, margin=dict(l=50, r=30, t=50, b=50),
     xaxis_title="TTF (standardised returns)", yaxis_title="German Power (standardised returns)",
     xaxis=dict(scaleanchor="y", scaleratio=1),
@@ -1667,9 +1690,9 @@ fig6.show()
 """))
 
 NB3.append(md("""\
-## 8. Key Findings
+## 8. Findings
 
-1. **DCC-GARCH catches regime shifts roughly 3 days in** — the rolling
+1. **DCC-GARCH catches regime shifts roughly 3 days in**, the rolling
    correlation lags by 25–30 days. During the transition, risk positions
    based on rolling correlation are systematically mis-sized.
 
@@ -1687,7 +1710,7 @@ NB3.append(md("""\
    shows points in the corners that the Gaussian ellipse classifies as 5%
    events but the t-copula ellipse treats as expected behaviour. Risk models
    built on Gaussian assumptions are systematically undercapitalised for
-   joint extreme moves — exactly the failure mode EMIR initial margin rules
+   joint extreme moves, exactly the failure mode EMIR initial margin rules
    are designed to prevent.
 
 The final notebook uses these dependence estimates to measure portfolio risk
@@ -1700,13 +1723,13 @@ NB3.append(md("""\
 
 - Demarta, S. & McNeil, A.J. (2005). "The t Copula and Related Copulas." *International Statistical Review*, 73(1), 111–129.
 - Engle, R.F. (2002). "Dynamic Conditional Correlation: A Simple Class of Multivariate Generalized Autoregressive Conditional Heteroskedasticity Models." *Journal of Business & Economic Statistics*, 20(3), 339–350.
-- J.P. Morgan / Reuters (1996). *RiskMetrics — Technical Document* (4th ed.).
+- J.P. Morgan / Reuters (1996). *RiskMetrics, Technical Document* (4th ed.).
 - Genest, C., Ghoudi, K. & Rivest, L.-P. (1995). A semiparametric estimation procedure of dependence parameters in multivariate families of distributions. *Biometrika*, 82(3), 543-552.
 - Lindskog, F., McNeil, A. & Schmock, U. (2003). Kendall's tau for elliptical distributions. In *Credit Risk: Measurement, Evaluation and Management*, 149-156. Physica-Verlag.
 - Sklar, A. (1959). "Fonctions de répartition à n dimensions et leurs marges." *Publications de l'Institut de Statistique de l'Université de Paris*, 8, 229–231.
 - Regulation (EU) 2019/2099 (EMIR Refit). *OTC derivatives, central counterparties and trade repositories*.
 
-## PDF Export
+## PDF export
 """))
 
 NB3.append(code("""\
@@ -1723,18 +1746,18 @@ print("PDF export: uncomment the line above and run to generate docs/notebooks/0
 NB4 = []
 
 NB4.append(md("""\
-# Portfolio VaR — t-Copula Risk Measurement & Backtesting
+# Portfolio VaR: t-Copula Risk Measurement and Backtesting
 
 **Notebook 4** of the Cross-Commodity Energy Trading analytics suite.  
 This notebook builds a realistic multi-commodity trading book, measures risk
 through a t-copula Monte Carlo engine, backtests the model against realised
 P&L, and stress-tests the portfolio under three macro scenarios.
 
-## Executive Summary
+## Executive summary
 
 A multi-commodity energy trading desk does not manage risk one commodity at a
-time. It manages a portfolio — long crude oil, short refining margins, long
-gas, short power-plant margins, long carbon — where the correlations between
+time. It manages a portfolio, long crude oil, short refining margins, long
+gas, short power-plant margins, long carbon, where the correlations between
 positions determine whether the book is diversified or concentrated. The
 dependence models from Notebook 3 are the inputs; this notebook applies them
 to measure and decompose portfolio risk.
@@ -1742,7 +1765,7 @@ to measure and decompose portfolio risk.
 The portfolio constructed here mirrors the structure of an integrated energy
 trading book: long Brent crude (+€9.2M notional), short 3-2-1 crack spread (−€4.6M), long
 TTF gas (+€8.0M), short spark spread (−€4.0M), and long EUA carbon (+€3.0M).
-The two short spread positions are structural hedges — when crude or gas
+The two short spread positions are structural hedges, when crude or gas
 rallies, the respective spreads typically compress, offsetting some of the
 directional loss.
 
@@ -1758,20 +1781,20 @@ filters and the t-copula are re-estimated on the trailing window, VaR is
 simulated from that fit, and the next day's realised P&L is compared against
 the forecast. The Kupiec (1995) likelihood ratio test evaluates whether the
 observed breach rate matches the expected 5%. A Christoffersen (1998)
-conditional coverage test checks whether breaches cluster — a sign that the
+conditional coverage test checks whether breaches cluster, a sign that the
 model fails exactly when it is needed most. The Basel supervisory traffic
 light is reported separately, on the 99% series over the most recent 250 days,
 because that is the only sample it is defined for.
 
-Finally, three stress scenarios — a gas supply crisis, a global recession, and
-an accelerated energy transition — are applied as deterministic full
+Finally, three stress scenarios, a gas supply crisis, a global recession, and
+an accelerated energy transition, are applied as deterministic full
 revaluations. Every risk factor moves by its stated shock and the book is
 re-priced, so each scenario produces a P&L waterfall showing which positions
 drive the loss (or gain) under that regime. A separate stressed-VaR run then
 re-simulates the distribution under a crisis correlation matrix, isolating
 what correlation breakdown alone costs.
 
-### Regulatory Context
+### Regulatory context
 
 It is worth being precise about which rules actually bind an energy trading
 book, because the answer is not the one a bank risk textbook gives.
@@ -1791,14 +1814,14 @@ capital; in the EU this arrives via CRR3 (Regulation (EU) 2024/1623), whose
 market risk own-funds requirement has itself been deferred to 1 January 2027
 by Commission Delegated Regulation (EU) 2025/1496. The metrics are adopted
 here because they are defensible risk measurement, not because they are
-compulsory — and the notebook says so rather than implying regulatory force
+compulsory, and the notebook says so rather than implying regulatory force
 it does not have.
 """))
 
 NB4.append(md("""\
-## 1. Regulatory Capital & Margin Primer
+## 1. Regulatory capital and margin
 
-### EMIR Initial Margin
+### EMIR initial margin
 
 Under EMIR (Regulation 648/2012, as amended), counterparties whose aggregate
 average notional amount of non-cleared OTC derivatives exceeds €8 billion must
@@ -1807,21 +1830,21 @@ thresholds are outside this obligation, so it binds the larger energy trading
 groups rather than all of them. The margin must cover potential future
 exposure at a 99% confidence level over a 10-day closeout period, computed via
 either
-a standardised schedule (the "grid method") or an approved internal model —
+a standardised schedule (the "grid method") or an approved internal model,
 typically a Monte Carlo VaR with copula dependence, identical in structure to
 the engine built here.
 
-### Basel FRTB (Benchmark, Not Binding Here)
+### Basel FRTB (Benchmark, not binding here)
 
 The Fundamental Review of the Trading Book (Basel Committee, 2019) replaced
 VaR at 99% with Expected Shortfall at 97.5% as the primary market risk metric.
 ES is preferred because it is a **coherent risk measure** (Artzner et al.,
-1999) — it satisfies sub-additivity, meaning the risk of a portfolio is never
+1999); it satisfies sub-additivity, meaning the risk of a portfolio is never
 greater than the sum of its components. VaR at 99% can violate sub-additivity
 in the presence of fat tails, creating perverse incentives to concentrate
 risk rather than diversify it.
 
-### Traffic-Light Backtesting (Basel)
+### Traffic-Light backtesting (Basel)
 
 The Basel Committee defines a traffic-light system for backtesting exceptions:
 
@@ -1893,7 +1916,7 @@ print(f"Returns shape: {aligned_rets.shape}")
 """))
 
 NB4.append(md("""\
-## 2. Portfolio Construction
+## 2. Portfolio construction
 
 A five-leg book spanning crude, products, gas, power, and carbon, constructed
 to reflect a realistic integrated trading mandate:
@@ -1906,8 +1929,8 @@ to reflect a realistic integrated trading mandate:
 | SPARK SPREAD | Short | −4.0 | Power | Gas-to-power margin hedge |
 | EUA | Long | 3.0 | Carbon | Compliance + trading position |
 
-The net/gross ratio — the proportion of directional exposure to total risk-
-taking capacity — is a standard desk metric. A ratio of 0.47 means roughly
+The net/gross ratio, the proportion of directional exposure to total risk-
+taking capacity, is a standard desk metric. A ratio of 0.47 means roughly
 half the gross notional is offset by hedges. The short spread positions are
 not separate trades; they are the natural hedge for a producer who is long
 the underlying commodity and short the processing margin.
@@ -1938,7 +1961,7 @@ print(f"Net/gross ratio:         {sum(positions.values())/total_abs_notional:.2f
 """))
 
 NB4.append(md("""\
-## 3. VaR & Expected Shortfall — Filtered Historical Simulation
+## 3. VaR and expected shortfall: filtered historical simulation
 
 The engine uses **filtered historical simulation** (Barone-Adesi, Giannopoulos
 & Vosper, 1999) with a t-copula dependence layer. This avoids assuming a
@@ -1952,7 +1975,7 @@ Monte Carlo most often understates commodity tail risk. Four steps:
    to draw 10,000 dependent uniform vectors $u^{(s)} \\in (0,1)^k$.
 3. **Invert empirically.** Each uniform is mapped back through the *empirical*
    quantile function of that commodity's own residuals,
-   $\\tilde{z}_i^{(s)} = \\hat{Q}_{z_i}(u_i^{(s)})$ — so the realised shape of
+   $\\tilde{z}_i^{(s)} = \\hat{Q}_{z_i}(u_i^{(s)})$, so the realised shape of
    the historical shock distribution is preserved, skew and all.
 4. **Rescale and aggregate.** Returns are reconstituted at today's volatility
    and applied to the book:
@@ -1975,8 +1998,8 @@ Expected Shortfall is the mean loss beyond VaR:
 $$\\text{ES}_\\alpha = -\\mathbb{E}[\\text{P\\&L} \\mid \\text{P\\&L} \\leq -\\text{VaR}_\\alpha]$$
 
 ES is the FRTB-standard metric because, unlike VaR, it accounts for the
-severity of losses beyond the threshold — it answers not just "how bad could
-it get?" but "how bad will it be, on average, when it gets that bad?"
+severity of losses beyond the threshold. Where VaR gives the loss the tail
+begins at, ES gives the average loss once the tail is entered.
 """))
 
 NB4.append(code("""\
@@ -2008,15 +2031,15 @@ fig2.show()
 """))
 
 NB4.append(md("""\
-## 4. Component VaR — Euler Allocation
+## 4. Component VaR: Euler allocation
 
 Component VaR decomposes total portfolio risk into additive contributions
 using Euler's theorem for homogeneous risk measures. The allocation answers a
 specific question: "if you had to reduce risk, which position would you cut
 first?"
 
-VaR is positively homogeneous of degree 1 in the position vector — doubling
-every position doubles the loss quantile — so Euler's theorem applies:
+VaR is positively homogeneous of degree 1 in the position vector, doubling
+every position doubles the loss quantile, so Euler's theorem applies:
 
 $$R(w) = \\sum_i w_i \\frac{\\partial R}{\\partial w_i}$$
 
@@ -2038,7 +2061,7 @@ quantile rather than one draw.
 
 Negative contributions indicate genuine diversification: a short spread
 position that offsets directional commodity risk reduces total VaR. The
-waterfall chart below shows how each position contributes to — or offsets —
+waterfall chart below shows how each position contributes to, or offsets,
 the total 95% VaR.
 """))
 
@@ -2056,7 +2079,7 @@ fig3 = go.Figure(go.Waterfall(
     totals={"marker": {"color": NAVY}},
 ))
 fig3.update_layout(
-    title="Component VaR — Euler Allocation (95%)",
+    title="Component VaR, Euler Allocation (95%)",
     height=380, margin=dict(l=40, r=20, t=50, b=40), showlegend=False,
 )
 fig3.show()
@@ -2066,7 +2089,7 @@ for name, cv in sorted(comp_var.items(), key=lambda x: abs(x[1]), reverse=True):
     print(f"  {name:12s}: EUR {cv:>10,.0f}  ({pct:>+6.1f}%)")
 
 # Euler components sum to total VaR by construction, so the check below is on
-# the identity, not a diversification measure — that comparison needs
+# the identity, not a diversification measure, that comparison needs
 # standalone VaRs and is done in section 9.
 comp_sum = sum(comp_var.values())
 sum_abs_comp = sum(abs(v) for v in comp_var.values())
@@ -2079,23 +2102,23 @@ print(f"the negative components are positions that pay when the book loses.")
 """))
 
 NB4.append(md("""\
-## 5. Rolling VaR Backtest
+## 5. Rolling VaR backtest
 
 A rolling-window backtest. At each date the GARCH models and the t-copula are
 re-estimated on the trailing window only, VaR is simulated from that fit, and
 the estimate is compared with the *next* day's realised P&L. No information
 from the scored day enters its own forecast.
 
-The window is 500 trading days — roughly two years. GARCH(1,1) with Student-t
+The window is 500 trading days, roughly two years. GARCH(1,1) with Student-t
 errors has five parameters and the filtering step reads a 1-in-20 empirical
 residual quantile, so a shorter window gives unstable volatility persistence
 and a tail estimate read off two or three observations.
 
-### Kupiec Test (1995)
+### Kupiec test (1995)
 
 The Kupiec test is a likelihood ratio test of whether the observed breach
 rate matches the expected rate. The null hypothesis is that the model is
-correctly specified — i.e., breaches occur independently with probability
+correctly specified, i.e., breaches occur independently with probability
 $1-\\alpha$. The test statistic is:
 
 $$\\text{LR}_{\\text{POF}} = -2 \\ln\\left(\\frac{(1-\\alpha)^{T-N}\\alpha^N}
@@ -2104,17 +2127,17 @@ $$\\text{LR}_{\\text{POF}} = -2 \\ln\\left(\\frac{(1-\\alpha)^{T-N}\\alpha^N}
 where $T$ is the number of observations and $N$ is the breach count. Under the
 null, this statistic follows a $\\chi^2(1)$ distribution.
 
-### Christoffersen Test (1998)
+### Christoffersen test (1998)
 
-The Kupiec test only checks the **unconditional** coverage — whether the total
+The Kupiec test only checks the **unconditional** coverage, whether the total
 breach count is right. The Christoffersen test additionally checks
-**independence** — whether breaches cluster. A model that produces the right
+**independence**, whether breaches cluster. A model that produces the right
 number of breaches but has them all in one month (when the correlation regime
 shifted) is worse than a model whose breaches are evenly spread. The
 Christoffersen test statistic combines the unconditional coverage and
 independence components, following a $\\chi^2(2)$ distribution.
 
-### Traffic-Light Interpretation
+### Traffic-Light interpretation
 
 The Basel traffic light is a supervisory backtesting scale, and it is defined
 for one specific setup: the **99%** one-day VaR over the **most recent 250**
@@ -2160,7 +2183,7 @@ if len(breaches) > 0:
         name=f"Breaches ({breach_count})",
     ))
 
-# The Basel zone is read off the 99% series over the last 250 days only —
+# The Basel zone is read off the 99% series over the last 250 days only,
 # that is the sample the supervisory scale is written for.
 last_250 = roll_df.tail(250)
 basel_breaches = int((last_250["realized_pnl"] < -last_250["var_99"]).sum())
@@ -2199,7 +2222,7 @@ print(f"Conditional coverage:   {verdict}")
 """))
 
 NB4.append(md("""\
-## 6. Stress Scenario P&L
+## 6. Stress scenario P&L
 
 Three macro scenarios, calibrated to historical events and policy
 trajectories. Each is a set of simultaneous price shocks:
@@ -2214,7 +2237,7 @@ trajectories. Each is a set of simultaneous price shocks:
 
 Each scenario is a **deterministic full revaluation**: every risk factor is
 moved by its stated shock and the book is re-priced. Correlation plays no part
-in the P&L — the joint move is prescribed by the scenario, not sampled — so
+in the P&L, the joint move is prescribed by the scenario, not sampled, so
 the waterfall below decomposes a single deterministic outcome by position.
 
 Correlation matters for the *probabilistic* companion question: how much VaR
@@ -2249,7 +2272,7 @@ for idx, s_name in enumerate(scenario_names, start=1):
     ), row=1, col=idx)
 
 fig5.update_layout(
-    title="Stress Scenario P&L — Deterministic Full Revaluation",
+    title="Stress Scenario P&L, Deterministic Full Revaluation",
     height=420, margin=dict(l=30, r=30, t=60, b=40),
 )
 fig5.show()
@@ -2262,24 +2285,24 @@ for s_name in scenario_names:
 """))
 
 NB4.append(md("""\
-## 6.5 Stressed VaR — Where Correlation Does Matter
+## 6.5 Stressed VaR: where correlation does matter
 
 The scenarios above answer "what if these exact moves happen". The related
 question a risk committee asks is "how much risk would the book carry if the
 stressed regime persisted". That is a distributional question, and it is where
 the dependence structure bites.
 
-Here the fitted t-copula correlation matrix is pushed toward crisis levels —
+Here the fitted t-copula correlation matrix is pushed toward crisis levels,
 all pairwise correlations shifted toward 0.90, the risk-off convergence seen
-in 2008 and in March 2020 — while the marginal GARCH filters are left
+in 2008 and in March 2020, while the marginal GARCH filters are left
 untouched. The difference between the two VaR numbers isolates the effect of
 correlation alone, with no change in individual volatilities.
 
 The sign of that difference is not obvious in advance, and it is worth being
 precise about why. For a long-only book, convergence unambiguously raises
 risk: everything falls together. This book is not long-only. The spread legs
-are deliberately opposed — long crude against short products, long gas against
-short power — and for an offsetting pair, *higher* correlation means the hedge
+are deliberately opposed, long crude against short products, long gas against
+short power, and for an offsetting pair, *higher* correlation means the hedge
 works better. Whether stressed VaR rises or falls depends on which effect
 dominates, so read the number below rather than assuming the direction.
 """))
@@ -2308,7 +2331,7 @@ NB4.append(md("""\
 The hedge effect wins, and by a wide margin: forcing every pair to 0.90 cuts
 99% VaR by roughly a third. That is the correct answer for this book, and it
 carries a warning a long-only reading would miss. **Convergence is not this
-portfolio's correlation risk — divergence is.** The crack and spark spreads
+portfolio's correlation risk, divergence is.** The crack and spark spreads
 are hedges only for as long as their legs keep moving together; the shock that
 hurts here is refining margins or the gas-to-power link decoupling, which
 widens the spread rather than compressing it. A stress library built solely
@@ -2318,9 +2341,9 @@ that breaks it.
 """))
 
 NB4.append(md("""\
-## 7. Model Risk & Limitations
+## 7. Model risk and limitations
 
-Every risk model has limitations. Acknowledging them is not a weakness — it
+Every risk model has limitations. Acknowledging them is not a weakness; it
 is the difference between a model user and a model believer. The key
 limitations of this framework:
 
@@ -2336,7 +2359,7 @@ limitations of this framework:
    addresses this, but does not eliminate the model risk.
 
 3. **Copula model risk.** The t-copula assumes symmetric tail dependence. In
-   energy markets, dependence may be asymmetric — crashes tend to be more
+   energy markets, dependence may be asymmetric, crashes tend to be more
    correlated than rallies. A skewed-t copula or a dynamic copula model
    (Patton, 2006) would capture this, at the cost of additional parameters.
 
@@ -2348,8 +2371,8 @@ limitations of this framework:
    controls.
 
 5. **P&L is linear in returns.** The portfolio uses linear positions only. A
-   real trading book includes options — calendar spreads, volatility swaps,
-   Asian options on crack spreads — with non-linear P&L profiles. The copula
+   real trading book includes options, calendar spreads, volatility swaps,
+   Asian options on crack spreads, with non-linear P&L profiles. The copula
    framework extends to non-linear instruments (the simulation step is
    identical; only the pricing step changes), but this is left for future
    development.
@@ -2366,7 +2389,7 @@ proof-of-concept of that monitoring process.
 NB4.append(code("""\
 # Quantify diversification benefit: portfolio VaR vs the sum of standalone VaRs.
 # A single-leg book has no dependence structure to estimate, so the copula is
-# None here — fitting one on a single series would be meaningless.
+# None here, fitting one on a single series would be meaningless.
 standalone_vars = {}
 for col in aligned_cols:
     single_rets = aligned_rets[[col]]
@@ -2389,24 +2412,24 @@ print(f"\\nSum of standalone VaRs:    EUR {sum_standalone:>12,.0f}")
 print(f"Portfolio VaR (t-copula):  EUR {pv.var_95:>12,.0f}")
 print(f"Diversification benefit:   {div_pct:.1f}%")
 print(f"\\nTwo effects drive the gap. Correlations below one mean the factors do not")
-print(f"peak together, and the spread legs carry opposite signs — the crack is long")
-print(f"crude against short products, the spark long power against short gas — so")
+print(f"peak together, and the spread legs carry opposite signs, the crack is long")
+print(f"crude against short products, the spark long power against short gas, so")
 print(f"part of the book is a genuine offset rather than a diversified bet.")
 """))
 
 NB4.append(md("""\
-## 8. Key Findings
+## 8. Findings
 
 1. **Diversification is material.** Portfolio VaR sits well below the sum of
    standalone risks, driven by correlations below one and by the offsetting
    legs of the crack and spark spreads. The Euler decomposition quantifies
-   exactly how much each risk factor contributes — or offsets.
+   exactly how much each risk factor contributes, or offsets.
 
 2. **t-Copula vs. Gaussian.** A Gaussian copula imposes zero tail dependence
    by construction, so it cannot represent joint crashes however the data
    behave. The t-copula lets the data decide through $\\nu$: a low fitted value
    means gas, power and carbon do crash together and VaR must reflect it. Read
-   the fitted $\\nu$ printed in section 3 before claiming the benefit — if it
+   the fitted $\\nu$ printed in section 3 before claiming the benefit, if it
    comes back near the upper search bound, the residuals are telling you the
    tail dependence is weak and the t-copula has converged toward the Gaussian
    case. That is a finding, not a failure.
@@ -2429,7 +2452,7 @@ NB4.append(md("""\
 5. **Model risk is real and acknowledged.** The limitations section documents
    what this engine does not capture. A real trading desk supplements the VaR
    model with position limits, concentration limits, stress tests, and
-   operational controls — not one of these, but all of them together.
+   operational controls, not one of these, but all of them together.
 """))
 
 NB4.append(md("""\
@@ -2446,7 +2469,7 @@ NB4.append(md("""\
 - Patton, A.J. (2006). "Modelling Asymmetric Exchange Rate Dependence." *International Economic Review*, 47(2), 527–556.
 - Regulation (EU) 2019/2099 (EMIR Refit). *OTC derivatives, central counterparties and trade repositories*.
 
-## PDF Export
+## PDF export
 
 To generate PDFs for all four notebooks, run the `export_pdfs.sh` script
 or uncomment the command below:
@@ -2470,4 +2493,4 @@ if __name__ == "__main__":
     nb("02_spread_economics", NB2)
     nb("03_correlation_crisis", NB3)
     nb("04_portfolio_risk", NB4)
-    print("Done — 4 notebooks built.")
+    print("Done, 4 notebooks built.")

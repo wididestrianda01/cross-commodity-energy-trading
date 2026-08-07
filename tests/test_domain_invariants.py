@@ -53,7 +53,7 @@ def test_crack_leg_conversions_are_barrel_based(config):
     crack = config.spreads.crack
 
     assert float(crack.rbob_gal_per_bbl) == pytest.approx(42.0)
-    assert float(crack.gasoil_bbl_per_tonne) == pytest.approx(7.45, rel=1e-3)
+    assert float(crack.gasoil_gal_per_bbl) == pytest.approx(42.0)
     # Refined products are priced per gallon/tonne, so an MWh factor would
     # short-circuit the barrel conversion the crack spread depends on.
     assert config.commodities.RBOB.mwh_per_unit is None

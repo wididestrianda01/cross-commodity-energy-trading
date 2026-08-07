@@ -1,10 +1,10 @@
 # Energy Cross-Commodity Trading Analytics
 
-A cross-commodity energy trading analytics platform covering Brent crude, TTF natural gas, EUA carbon allowances, and European power markets. The platform models the economic linkages between these markets: how carbon prices drive fuel switching between gas and coal generation, how the resulting merit-order dynamics flow through to power prices, and how correlations between commodities shift during market crises. Built with real market data from ICE, EEX, and ENTSO-E.
+A cross-commodity energy trading analytics platform covering Brent crude, TTF natural gas, EUA carbon allowances, and European power markets. The platform models the economic linkages between these markets: how carbon prices drive fuel switching between gas and coal generation, how the resulting merit-order dynamics flow through to power prices, and how strongly those links actually show up in returns at a daily horizon. Built with real market data from ICE, EEX, and ENTSO-E.
 
 The analytics engine combines univariate GARCH volatility models, dynamic conditional correlation (DCC-GARCH), multivariate t-copula simulation, and Euler-allocated value-at-risk. The Streamlit dashboard presents four analytical views: market monitoring, correlation analysis, risk decomposition, and fuel-switching economics.
 
-## Why These Markets Move Together
+## Why these markets move together
 
 European energy markets do not clear independently. A gas supply shock propagates through multiple channels:
 
@@ -14,7 +14,7 @@ European energy markets do not clear independently. A gas supply shock propagate
 
 3. **Fuel switching.** The clean spark spread (CSS) and clean dark spread (CDS) measure the profitability of gas and coal generation respectively, net of fuel and carbon costs. When CSS exceeds CDS, gas is the cheaper marginal fuel and tends to set the power price. At €100/t carbon, a modern CCGT has a carbon-cost advantage of roughly €53/MWh over a hard-coal plant (€37/MWh versus €90/MWh), because coal emits approximately 2.5 times more CO2 per MWh of electricity generated. The platform tracks this fuel-switching signal daily and identifies the break-even carbon price at which the two technologies are equally profitable.
 
-4. **Correlation regime shifts.** The gas-power correlation is far weaker at daily frequency than the physical link suggests, and it moves. Over the full sample the daily displaced-log-return correlation between TTF and German baseload is 0.09; the rolling 60-day correlation averages -0.01 across 2020-2021, peaks at 0.45 on 2022-01-25 during the gas crisis, and settles back to 0.07 through 2025. The same correlation measured on lower-frequency returns rises monotonically — 0.09 daily, 0.34 weekly, 0.45 monthly, 0.49 quarterly — which is the Epps effect: microstructure and weather noise swamp the common fuel-cost factor at short horizons. A covariance matrix estimated from a calm period therefore understates crisis risk, which is the case for the DCC-GARCH specification used here over a static estimate.
+4. **Correlation regime shifts.** The gas-power correlation is far weaker at daily frequency than the physical link suggests, and it moves. Over the full sample the daily displaced-log-return correlation between TTF and German baseload is 0.09; the rolling 60-day correlation averages -0.01 across 2020-2021, peaks at 0.45 on 2022-01-25 during the gas crisis, and settles back to 0.07 through 2025. The same correlation measured on lower-frequency returns rises monotonically (0.09 daily, 0.34 weekly, 0.45 monthly, 0.49 quarterly), which is the Epps effect: microstructure and weather noise swamp the common fuel-cost factor at short horizons. A covariance matrix estimated from a calm period therefore understates crisis risk, which is the case for the DCC-GARCH specification used here over a static estimate.
 
 ## Architecture
 
@@ -31,9 +31,9 @@ graph TD
     H --> I[Market Monitor / Correlation Lab / Risk Command / Fuel Switch]
 ```
 
-The pipeline fetches data from three sources — yfinance for financial futures (Brent, TTF, RBOB, Gasoil, API2 coal, EURUSD), ENTSO-E Transparency Platform for day-ahead power prices (German and Nordic bidding zones), and EEX auction reports for EUA carbon prices. Each source has an independent adapter in `fetcher.py` that returns a standardised DataFrame. The normalizer converts all prices to EUR/MWh for cross-commodity comparison while preserving native units for spread calculations that require them.
+The pipeline fetches data from three sources: yfinance for financial futures (Brent, TTF, RBOB, Gasoil, API2 coal, EURUSD), ENTSO-E Transparency Platform for day-ahead power prices (German and Nordic bidding zones), and EEX auction reports for EUA carbon prices. Each source has an independent adapter in `fetcher.py` that returns a standardised DataFrame. The normalizer converts all prices to EUR/MWh for cross-commodity comparison while preserving native units for spread calculations that require them.
 
-DuckDB serves as the sole data store. All analytics modules read from it through a version-controlled SQL query library in `sql/`. The dashboard queries the database live — there are no static CSV exports or pre-rendered charts.
+DuckDB is the sole data store. All analytics modules read from it through a version-controlled SQL query library in `sql/`. The dashboard queries the database live; there are no static CSV exports or pre-rendered charts.
 
 ## Dashboard
 
@@ -48,9 +48,9 @@ DuckDB serves as the sole data store. All analytics modules read from it through
 | *Euler-allocated component VaR from 10,000 t-copula draws. P&L backtest with VaR 95% band and breach markers, scored live by Kupiec and Christoffersen. Stress scenario P&L waterfall. Cumulative portfolio P&L trajectory with Sharpe ratio and maximum drawdown.* | *Fuel-switching signal (CSS − CDS) with gas/coal/zone bands and regime-day counts. Rolling 60-day carbon pass-through beta, shaded with its own realised 10th-90th percentile band rather than a textbook range. STL seasonal decomposition of the 3-2-1 crack spread. Break-even carbon price versus actual EUA with gas-favored and coal-favored shading.* |
 
 
-## Notebooks — Deep-Dive Analytics
+## Notebooks
 
-Four Jupyter notebooks provide the theoretical foundation, regulatory context, and detailed methodology behind each dashboard view. Each notebook is self-contained: it can be read standalone or as part of the progressive narrative from market data through spreads, correlations, and portfolio risk. All notebooks include executive summaries, formal derivations, academic citations, and references to the relevant EU regulations (REMIT II, MiFID II, EMIR, EU ETS Directive).
+Four Jupyter notebooks carry the derivations and the regulatory context behind each dashboard view. Each one reads standalone, but they run in sequence: market data, then spreads, then correlation, then portfolio risk. Each notebook states its result up front, derives the estimator it uses, and cites the EU regulation it depends on where one applies (REMIT II, MiFID II, EMIR, EU ETS Directive).
 
 | # | Notebook | Covers | PDF |
 |---|----------|--------|-----|
@@ -61,7 +61,7 @@ Four Jupyter notebooks provide the theoretical foundation, regulatory context, a
 
 To generate PDFs: `bash notebooks/export_pdfs.sh` (requires `weasyprint`).
 
-## Spread Economics
+## Spread economics
 
 ### Clean spark spread (gas-to-power)
 
@@ -75,7 +75,7 @@ Default parameters: η_gas = 0.55 (CCGT thermal efficiency), ε_gas = 0.37 tCO2/
 
 $$\text{CDS} = P_{\text{power}} - \frac{P_{\text{coal}}}{\eta_{\text{coal}}} - P_{\text{carbon}} \times \varepsilon_{\text{coal}}$$
 
-Default parameters: η_coal = 0.38, ε_coal = 0.90 tCO2/MWh. At €100/t carbon, coal generation incurs €90/MWh in carbon costs — a €53/MWh disadvantage relative to gas, all else equal.
+Default parameters: η_coal = 0.38, ε_coal = 0.90 tCO2/MWh. At €100/t carbon, coal generation incurs €90/MWh in carbon costs, a €53/MWh disadvantage relative to gas, all else equal.
 
 ### Fuel-switching signal
 
@@ -87,7 +87,7 @@ The signal is classified into three regimes: gas-favored (>€5/MWh), coal-favor
 
 $$\text{Crack} = \frac{2 \times P_{\text{RBOB}} + 1 \times P_{\text{Gasoil}} - 3 \times P_{\text{Brent}}}{3}$$
 
-where every leg is first expressed in USD/bbl: RBOB is quoted in USD/gal (× 42), ICE Gasoil in USD/tonne (÷ 7.45), and Brent already in USD/bbl. Combining the raw quotes without this normalisation yields a finite, plausible-looking number that is dimensionally meaningless.
+where every leg is first expressed in USD/bbl: RBOB is quoted in USD/gal (× 42), ULSD heating oil (HO=F) also in USD/gal (× 42), and Brent already in USD/bbl. Combining the raw quotes without this normalisation yields a finite, plausible-looking number that is dimensionally meaningless.
 
 The 3-2-1 ratio reflects a simplified refinery yield: 3 barrels of crude produce 2 barrels of gasoline and 1 barrel of distillate. The seasonal decomposition uses additive STL with a period of 252 trading days to separate the trend, annual seasonal pattern, and residual component.
 
@@ -99,7 +99,7 @@ $$P_{\text{carbon}}^{\text{BE}} = \frac{ P_{\text{coal}}/\eta_{\text{coal}} - P_
 
 When the actual EUA price exceeds the break-even, gas is the cheaper marginal fuel. The dashboard plots the break-even as a time series against the actual EUA price with shaded regions indicating which fuel is favored.
 
-## Risk Methodology
+## Risk methodology
 
 ### Univariate GARCH
 
@@ -119,7 +119,7 @@ $$Q_t = (1 - a - b)\bar{Q} + a(e_{t-1}e_{t-1}') + bQ_{t-1}$$
 
 $$R_t = \text{diag}(Q_t)^{-1/2} \, Q_t \, \text{diag}(Q_t)^{-1/2}$$
 
-where e_t are the standardized residuals from step 1 and Q̄ is their unconditional *correlation* matrix (correlation targeting — a covariance matrix here would leave R_t inconsistently scaled). The parameters a and b are estimated by quasi-maximum-likelihood on the second-stage objective
+where e_t are the standardized residuals from step 1 and Q̄ is their unconditional *correlation* matrix (correlation targeting; a covariance matrix here would leave R_t inconsistently scaled). The parameters a and b are estimated by quasi-maximum-likelihood on the second-stage objective
 
 $$-2 \ln L(a, b) = \sum_t \left[ \ln|R_t| + e_t' R_t^{-1} e_t - e_t' e_t \right]$$
 
@@ -127,11 +127,11 @@ subject to a ≥ 0, b ≥ 0 and a + b < 1, which keeps Q_t positive definite and
 
 ### t-Copula
 
-The multivariate t-copula captures joint tail dependence — the tendency for extreme moves to occur simultaneously across commodities:
+The multivariate t-copula captures joint tail dependence, the tendency for extreme moves to occur simultaneously across commodities:
 
 $$C(u_1, \ldots, u_n; R, \nu) = t_{\nu, R}(t_\nu^{-1}(u_1), \ldots, t_\nu^{-1}(u_n))$$
 
-The copula is fitted by canonical maximum pseudo-likelihood (Genest, Ghoudi & Rivest, 1995). Margins are left unspecified and rank-transformed to pseudo-observations u_i = rank_i / (n + 1), so a misspecified parametric margin cannot contaminate the estimated dependence. The correlation matrix R is obtained by Kendall's-τ inversion, ρ = sin(πτ/2) (Lindskog, McNeil & Schmock, 2003), which is robust to the heavy tails that motivate using a t-copula in the first place — the Pearson correlation of raw residuals is biased for the copula parameter under exactly those conditions. The degrees of freedom ν are then estimated over [2.05, 50] by maximising the *copula* log-likelihood,
+The copula is fitted by canonical maximum pseudo-likelihood (Genest, Ghoudi & Rivest, 1995). Margins are left unspecified and rank-transformed to pseudo-observations u_i = rank_i / (n + 1), so a misspecified parametric margin cannot contaminate the estimated dependence. The correlation matrix R is obtained by Kendall's-τ inversion, ρ = sin(πτ/2) (Lindskog, McNeil & Schmock, 2003), which is robust to the heavy tails that motivate using a t-copula in the first place; the Pearson correlation of raw residuals is biased for the copula parameter under exactly those conditions. The degrees of freedom ν are then estimated over [2.05, 50] by maximising the *copula* log-likelihood,
 
 $$\ln c(u) = \ln f_{t,\nu,R}\!\left(t_\nu^{-1}(u)\right) - \sum_i \ln f_{t,\nu}\!\left(t_\nu^{-1}(u_i)\right)$$
 
@@ -139,7 +139,7 @@ The subtracted margin terms matter: maximising the joint density alone would let
 
 $$\lambda_{ij} = 2 \, t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)$$
 
-The t-copula is radially symmetric, so lower- and upper-tail coefficients are equal. For the TTF-German power pair, the fitted ν is typically 4-6, producing tail dependence of 0.30-0.45. A Gaussian copula (ν→∞) has λ_ij = 0 exactly for any ρ < 1, systematically understating joint-tail risk.
+The t-copula is radially symmetric, so lower- and upper-tail coefficients are equal. A Gaussian copula (ν→∞) has λ_ij = 0 exactly for any ρ < 1, so it cannot represent joint-tail risk at all. On this panel the fit is not especially heavy-tailed: ν = 19.9 on the nine-series GARCH residuals, and λ is bounded by the pairwise ρ, which is small for most pairs. The strongest joint-tail link is Brent-RBOB at λ = 0.14 (ρ = 0.80), followed by the two power markets at λ = 0.03 (ρ = 0.64). For TTF against German power, ρ = −0.03 gives λ ≈ 0. The t-copula therefore adds little over a Gaussian one here, and the honest reading is that daily cross-commodity tail dependence in this sample is weak rather than that the model found it.
 
 ### Portfolio VaR and component allocation
 
@@ -152,7 +152,7 @@ VaR and ES are produced by Filtered Historical Simulation (Barone-Adesi, Giannop
 
 $$\text{VaR}_\alpha = -Q_{1-\alpha}(\text{PnL}), \quad \text{ES}_\alpha = -\mathbb{E}[\text{PnL} \mid \text{PnL} \leq -\text{VaR}_\alpha]$$
 
-Steps 1 and 3 are what make the estimate conditional and fat-tailed. Applying a normal inverse CDF to an unconditional sample standard deviation — the textbook shortcut — discards both the current volatility state and the excess kurtosis of the residuals, and understates the tail on exactly the days that matter.
+Steps 1 and 3 are what make the estimate conditional and fat-tailed. Applying a normal inverse CDF to an unconditional sample standard deviation, the textbook shortcut, discards both the current volatility state and the excess kurtosis of the residuals, and understates the tail on exactly the days that matter.
 
 VaR is positively homogeneous of degree one in the position vector, so Euler's theorem gives an exact additive decomposition:
 
@@ -168,11 +168,11 @@ The VaR model is backtested on a rolling 500-day estimation window. The Kupiec (
 
 $$\text{LR}_{\text{POF}} = 2\left[ x \ln\left(\frac{x}{Np}\right) + (N-x) \ln\left(\frac{N-x}{N(1-p)}\right) \right] \sim \chi^2_1$$
 
-where x is the number of breaches, N is the number of observations, and p = 1 − α is the expected breach rate. The current backtest over 452 out-of-sample days shows 30 breaches at the 95% level (6.64% observed versus 5.0% expected), yielding a Kupiec p-value of 0.127 — the null hypothesis of correct coverage cannot be rejected, though the model is mildly optimistic and the p-value is not comfortable. The out-of-sample window is short because the common-date panel is bounded by EUA auction frequency (see Data coverage below), and 452 observations give the test limited power.
+where x is the number of breaches, N is the number of observations, and p = 1 − α is the expected breach rate. The current backtest over 452 out-of-sample days shows 30 breaches at the 95% level (6.64% observed versus 5.0% expected), yielding a Kupiec p-value of 0.127. The null hypothesis of correct coverage cannot be rejected, though the model is mildly optimistic and the p-value is not comfortable. The out-of-sample window is short because the common-date panel is bounded by EUA auction frequency (see Data coverage below), and 452 observations give the test limited power.
 
 Unconditional coverage alone is not sufficient: a model can produce the right number of breaches while clustering them all in one week. Christoffersen (1998) adds an independence test on the breach indicator sequence and combines the two into a conditional-coverage statistic, LR_cc = LR_uc + LR_ind, distributed χ²(2). The book returns LR_ind p = 0.409 and LR_cc p = 0.223, so breaches are neither too frequent nor clustered in time.
 
-Basel's traffic-light zones are reported separately, because they are defined only for 99% VaR over a 250-day window and are not rescalable to other confidence levels. On that basis the book records 7 breaches, placing it in the yellow zone — within the range a correctly specified model produces by chance, but above the green threshold of 4.
+Basel's traffic-light zones are reported separately, because they are defined only for 99% VaR over a 250-day window and are not rescalable to other confidence levels. On that basis the book records 7 breaches, placing it in the yellow zone, within the range a correctly specified model produces by chance, but above the green threshold of 4.
 
 ### Stress scenarios
 
@@ -186,9 +186,9 @@ Three scenarios are defined with explicit price shocks and correlation overrides
 
 The dashboard computes P&L waterfalls for each scenario using the current portfolio positions and the shocked price levels.
 
-The scenario P&L itself is a deterministic full revaluation: the scenario fixes every price jointly, so correlation plays no part in it. The overrides in the last column are used elsewhere — substituted for the fitted copula correlation and re-simulated, they answer the separate question of how much could be lost if the book's diversification stops working. A deterministic shock set cannot answer that, because it has no distribution. Forcing every pair to 0.90 on the book as configured *lowers* 99% VaR by around 30%, because the crack and spark legs are deliberately opposed and tighter co-movement makes those hedges work better. For this portfolio the dangerous regime is correlation breakdown, not convergence.
+The scenario P&L itself is a deterministic full revaluation: the scenario fixes every price jointly, so correlation plays no part in it. The overrides in the last column are used elsewhere: substituted for the fitted copula correlation and re-simulated, they answer the separate question of how much could be lost if the book's diversification stops working. A deterministic shock set cannot answer that, because it has no distribution. Forcing every pair to 0.90 on the book as configured *lowers* 99% VaR by around 30%, because the crack and spark legs are deliberately opposed and tighter co-movement makes those hedges work better. For this portfolio the dangerous regime is correlation breakdown, not convergence.
 
-## Data Pipeline
+## Data pipeline
 
 All prices are normalised to EUR/MWh for cross-commodity comparability. Conversion factors:
 
@@ -202,11 +202,11 @@ All prices are normalised to EUR/MWh for cross-commodity comparability. Conversi
 
 `EURUSD=X` quotes USD per EUR, so USD prices are divided by it. The API2 CIF ARA coal contract is specified at 6,000 kcal/kg NAR, which is 6.978 MWh/tonne; the more commonly quoted 8.141 MWh/tonne is tonne-of-coal-equivalent at 7,000 kcal/kg and does not match the traded contract.
 
-Crack spread legs are quoted in three different units and are converted to USD/bbl before the 2:1:3 ratio is applied — RBOB × 42 gal/bbl, Gasoil ÷ 7.45 bbl/tonne, Brent unchanged.
+Crack spread legs are converted to USD/bbl before the 2:1:3 ratio is applied: RBOB × 42 gal/bbl, ULSD heating oil × 42 gal/bbl, Brent unchanged.
 
 The pipeline fetches data from three sources independently. If any source fails, the pipeline exits with code 1 and reports the error to stderr. The `--synthetic` flag loads synthetic data for testing only; it is never invoked as a fallback.
 
-Because real and synthetic runs write disjoint date ranges, `INSERT OR REPLACE` alone would let the two provenances coexist in `fact_prices` — every downstream query would then silently read their union. Each run therefore deletes rows written under the opposite provenance before loading, and a real-data run asserts that no synthetic row survives, raising rather than proceeding if one does. The `source` column records the provenance of every row, so the split can be audited directly.
+Because real and synthetic runs write disjoint date ranges, `INSERT OR REPLACE` alone would let the two provenances coexist in `fact_prices`, and every downstream query would then silently read their union. Each run therefore deletes rows written under the opposite provenance before loading, and a real-data run asserts that no synthetic row survives, raising rather than proceeding if one does. The `source` column records the provenance of every row, so the split can be audited directly.
 
 ### Data coverage
 
@@ -218,7 +218,7 @@ Because real and synthetic runs write disjoint date ranges, `INSERT OR REPLACE` 
 | German power | ENTSO-E | `DE_LU` bidding zone | 2020-01-01 | 2026-08-06 | 2,410 |
 | Nordic power (NO1) | ENTSO-E | `NO_1` bidding zone | 2020-01-01 | 2026-08-06 | 2,410 |
 | RBOB gasoline | NYMEX (yfinance) | `RB=F` | 2020-01-02 | 2026-08-05 | 1,659 |
-| ICE Gasoil | ICE (yfinance) | `GOC=F` | 2020-01-02 | 2026-08-05 | 1,657 |
+| ULSD heating oil | NYMEX (yfinance) | `HO=F` | 2020-01-02 | 2026-08-05 | 1,660 |
 | API2 coal | ICE (yfinance) | `MTF=F` | 2020-01-02 | 2025-12-26 | 1,504 |
 | EURUSD | FX (yfinance) | `EURUSD=X` | 2020-01-01 | 2026-08-05 | 1,716 |
 
@@ -226,7 +226,7 @@ Total: 16,111 rows across 9 commodities, 2020-01-01 to 2026-08-06.
 
 The panel starts in 2020 because EEX publishes EUA auction reports only from that year, and carbon is a required input to both spread definitions. Two further consequences of the source mix are worth stating plainly rather than hiding:
 
-- **EUA auctions clear two to three times a week, not daily.** Requiring a common date across all nine series therefore collapses the panel to 873 observations, and the portfolio backtest — which needs only the six risk factors carried in the book — to 952 returns, of which 452 are out-of-sample after the 500-day rolling window. This is the binding constraint on statistical power throughout the repo, not the length of the raw history.
+- **EUA auctions clear two to three times a week, not daily.** Requiring a common date across all nine series therefore collapses the panel to 873 observations, and the portfolio backtest, which needs only the six risk factors carried in the book, to 952 returns, of which 452 are out-of-sample after the 500-day rolling window. This is the binding constraint on statistical power throughout the repo, not the length of the raw history.
 - **API2 coal stops at 2025-12-26.** The `MTF=F` contract stopped quoting on the free yfinance feed at that point while every other series runs to August 2026. Coal enters the clean dark spread but not the risk book, so this truncates the fuel-switching analysis rather than the VaR results.
 
 ### ENTSO-E notes
@@ -237,21 +237,23 @@ The ENTSO-E Transparency Platform provides day-ahead power prices through the `e
 
 The EEX auction report XLSX files are downloaded from the public EEX Group URL for each year (2020-2026), cached locally in `.carbon_cache/`, and parsed with the `carbon_ets` library's internal parser. The original `carbon_ets` archive URL is blocked (HTTP 403), so a custom fetcher handles the download. Pre-2020 EUA data requires a different source; the existing data starts at 2020-01-07, which covers the period when carbon prices became economically material (>€25/t).
 
-## Key Findings from the Data
+## What the data shows
 
 **August 2022 spark spread inversion.** TTF rose from roughly €80/MWh in January 2022 to over €300/MWh in August. The clean spark spread dropped below −€200/MWh. Gas plants became deeply unprofitable; German coal plants increased output despite carbon costs. The fuel-switching signal flipped to coal-favored for approximately 60 consecutive trading days.
 
-**Correlation regime shifts, and how weak they are at daily frequency.** The TTF-German power rolling 60-day correlation averaged -0.01 across 2020-2021, peaked at 0.45 on 2022-01-25 during the gas crisis, and settled back to 0.07 through 2025. The peak is real but modest, and a static covariance matrix estimated on a calm sample would understate crisis-period risk. The more useful finding is that the same correlation rises monotonically with the return horizon — 0.09 daily, 0.34 weekly, 0.45 monthly, 0.49 quarterly. The gas-power link is a low-frequency phenomenon; at daily frequency it is largely buried under weather and renewable output. A one-day VaR model built on daily returns is therefore measuring a genuinely weaker dependence than the physical fuel-cost relationship implies, and reporting the monthly figure as if it applied to a daily book would overstate diversification risk.
+**Correlation regime shifts, and how weak they are at daily frequency.** The TTF-German power rolling 60-day correlation averaged -0.01 across 2020-2021, peaked at 0.45 on 2022-01-25 during the gas crisis, and settled back to 0.07 through 2025. The peak is real but modest, and a static covariance matrix estimated on a calm sample would understate crisis-period risk. The more useful finding is that the same correlation rises monotonically with the return horizon (0.09 daily, 0.34 weekly, 0.45 monthly, 0.49 quarterly). The gas-power link is a low-frequency phenomenon; at daily frequency it is largely buried under weather and renewable output. A one-day VaR model built on daily returns is therefore measuring a genuinely weaker dependence than the physical fuel-cost relationship implies, and reporting the monthly figure as if it applied to a daily book would overstate diversification risk.
 
-**Carbon-fuel-switching nexus.** At €100/t carbon, the carbon-cost component alone gives gas generation a roughly €53/MWh advantage over coal; the total advantage also depends on the prevailing TTF-versus-API2 fuel-cost differential and therefore varies day to day. The actual EUA price has exceeded the break-even level consistently since 2021, confirming that carbon policy has made gas the structurally cheaper marginal fuel in Germany.
+**Carbon and fuel switching.** At €100/t carbon, the carbon-cost component alone gives gas generation a roughly €53/MWh advantage over coal, because coal emits about 0.9 tCO2 per MWh of electricity against 0.37 for a 55%-efficient CCGT. That component is only half the calculation: the total advantage also depends on the prevailing TTF-versus-API2 fuel-cost differential, so the break-even carbon price moves with the fuel spread rather than sitting at a fixed level.
 
-**Tail dependence is weak once volatility is filtered out.** Fitted on GARCH standardised residuals over the full sample, the t-copula returns ν = 35.2 across the seven-commodity set and ν = 16.4 on the six risk factors carried in the book. The strongest pairwise tail dependence is EUA-German power at λ = 0.001. Both are close to the Gaussian limit, and the honest reading is that these returns show little tail dependence beyond what correlation already captures.
+The sample shows the switch running in both directions. Gas was the cheaper marginal fuel on every day of 2020 and 55% of 2021, then on 3.8% of 2022, before recovering to 79%, 86% and 72% in 2023, 2024 and 2025. The 2022 reversal is the point: TTF rose far enough that no plausible EUA price could close the gap, and carbon pricing stopped being the binding constraint on the merit order. Outside that period the EUA price does sit above break-even most of the time, but the mechanism is a price race between two fuels, not a one-way policy ratchet.
 
-That result is worth stating plainly rather than assuming the opposite. The coefficient λ is a limiting quantity: as the threshold quantile q approaches 1, it is the probability that one leg breaches its own q-quantile *given* that the other has breached its q-quantile. Energy markets are widely described as crashing together, and a copula fitted to *raw* returns would agree, because raw returns share the volatility clustering that GARCH is there to strip out. Filtering first separates the two channels: joint extremes in this sample are driven by common volatility, not by residual tail linkage. Reporting ν ≈ 5 here would overstate the model's own evidence.
+**Tail dependence is weak once volatility is filtered out.** Fitted on GARCH standardised residuals over the full sample, the t-copula returns ν = 19.9 across the nine-series common-date panel and ν = 17.6 on the six risk factors carried in the book. The strongest pairwise tail dependence is Brent-RBOB at λ = 0.14, two refined-product legs of the same crack; the two power markets reach λ = 0.03, and every cross-commodity pair in the book is below 0.01. Both fits sit close enough to the Gaussian limit that these returns show little tail dependence beyond what correlation already captures.
+
+That result is worth stating plainly rather than assuming the opposite. The coefficient λ is a limiting quantity: as the threshold quantile q approaches 1, it is the probability that one leg breaches its own q-quantile *given* that the other has breached its q-quantile. A copula fitted to *raw* returns does report a heavier tail on the same panel, ν = 12.9 with Brent-RBOB at λ = 0.24, because raw returns still carry the volatility clustering that GARCH is there to strip out. Filtering first separates the two channels: joint extremes in this sample are driven by common volatility, not by residual tail linkage. Reporting ν ≈ 5 here would overstate the model's own evidence.
 
 The practical consequence is that the copula contributes less to this book's VaR than the GARCH volatility term does, and the framework's live risk is the correlation *regime shift* documented above, not a fat joint tail.
 
-**Backtest calibration.** The rolling 500-day 95% VaR model recorded 30 breaches in 452 out-of-sample days (6.64% observed versus 5.0% expected). Kupiec POF gives p = 0.127 and Christoffersen conditional coverage p = 0.223, so correct coverage is not rejected at conventional levels — but the model is mildly optimistic and the p-values are not comfortable. Under the Basel traffic-light mapping at the 99% level the most recent 250 days produce 7 breaches, which is the yellow zone. The out-of-sample window is short because the common-date panel is bounded by EUA auction frequency (see Data coverage), so the tests have limited power and should be read as provisional.
+**Backtest calibration.** The rolling 500-day 95% VaR model recorded 30 breaches in 452 out-of-sample days (6.64% observed versus 5.0% expected). Kupiec POF gives p = 0.127 and Christoffersen conditional coverage p = 0.223, so correct coverage is not rejected at conventional levels, but the model is mildly optimistic and the p-values are not comfortable. Under the Basel traffic-light mapping at the 99% level the most recent 250 days produce 7 breaches, which is the yellow zone. The out-of-sample window is short because the common-date panel is bounded by EUA auction frequency (see Data coverage), so the tests have limited power and should be read as provisional.
 
 ## Quickstart
 
@@ -272,7 +274,7 @@ poetry run streamlit run src/energy_cross_commodity/dashboard/app.py
 poetry run pytest tests/ -v
 ```
 
-## Module Structure
+## Module structure
 
 | Module | Purpose |
 |--------|---------|

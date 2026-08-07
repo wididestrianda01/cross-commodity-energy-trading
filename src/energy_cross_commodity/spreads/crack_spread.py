@@ -8,8 +8,8 @@ from statsmodels.tsa.seasonal import STL
 GAL_PER_BBL = 42.0
 """US gallons per barrel — the RBOB contract is quoted in USD/gal."""
 
-GASOIL_BBL_PER_TONNE = 7.45
-"""Barrels per tonne for ICE Low Sulphur Gasoil (USD/tonne quote basis)."""
+GASOIL_GAL_PER_BBL = 42.0
+"""US gallons per barrel for NYMEX ULSD heating oil (HO=F, USD/gal quote basis)."""
 
 
 def compute_321_crack(
@@ -17,7 +17,7 @@ def compute_321_crack(
     gasoil: np.ndarray,
     brent: np.ndarray,
     gal_per_bbl: float = GAL_PER_BBL,
-    gasoil_bbl_per_tonne: float = GASOIL_BBL_PER_TONNE,
+    gasoil_gal_per_bbl: float = GASOIL_GAL_PER_BBL,
 ) -> np.ndarray:
     """Compute the 3-2-1 crack spread (refinery margin) in USD/bbl.
 
@@ -25,24 +25,26 @@ def compute_321_crack(
     and 1 barrel of distillate, so the per-barrel margin is
     ``(2*gasoline + 1*distillate - 3*crude) / 3``.
 
-    The three legs trade in different units, so each product leg is
-    converted to USD/bbl before the ratio is applied: RBOB is multiplied
-    by 42 gal/bbl and Gasoil is divided by 7.45 bbl/tonne. Applying the
-    ratio to the raw quotes would add USD/gal to USD/tonne and is
+    The distillate leg is the NYMEX ULSD heating oil future (HO=F), the
+    standard proxy for the distillate leg of the 3-2-1 crack since ICE
+    Gasoil is a European contract with thin US relevance. Both product
+    legs are quoted in USD/gal and are converted to USD/bbl by
+    multiplying by 42 gal/bbl before the ratio is applied. Applying the
+    ratio to the raw quotes would add USD/gal to USD/bbl and is
     dimensionally meaningless.
 
     Args:
         rbob: RBOB gasoline price array (USD/gal).
-        gasoil: ICE Gasoil price array (USD/tonne).
+        gasoil: NYMEX ULSD heating oil price array (USD/gal).
         brent: Brent crude price array (USD/bbl).
         gal_per_bbl: Gallons per barrel for the RBOB conversion.
-        gasoil_bbl_per_tonne: Barrels per tonne for the Gasoil conversion.
+        gasoil_gal_per_bbl: Gallons per barrel for the heating oil conversion.
 
     Returns:
         Crack spread array in USD/bbl.
     """
     rbob_bbl = np.asarray(rbob, dtype=float) * gal_per_bbl
-    gasoil_bbl = np.asarray(gasoil, dtype=float) / gasoil_bbl_per_tonne
+    gasoil_bbl = np.asarray(gasoil, dtype=float) * gasoil_gal_per_bbl
     brent_bbl = np.asarray(brent, dtype=float)
     return (2.0 * rbob_bbl + 1.0 * gasoil_bbl - 3.0 * brent_bbl) / 3.0
 
