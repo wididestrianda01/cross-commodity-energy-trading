@@ -211,8 +211,8 @@ For TTF against German power the fit lands near ν ≈ 19 with ρ close to zero,
 daily frequency. Counting empirical joint exceedances agrees: at the 10% level the pair
 breaches jointly on the downside slightly more often than independence predicts and on the
 upside slightly less. The t-copula still earns its place in the portfolio VaR, where the
-full nine-series panel fits a heavier ν ≈ 13 and the two power markets reach λ ≈ 0.27 —
-but that dependence lives in other pairs, not this one.
+full nine-series panel fits a heavier ν ≈ 13 and Brent against RBOB reaches λ ≈ 0.23, the
+strongest pair in the panel. That dependence lives in other pairs, not this one.
 
 **Correlation regime detection** computes the Frobenius norm (√Σᵢⱼ ρᵢⱼ²) of the rolling
 correlation matrix and classifies each time point into LOW (<33rd percentile), NORMAL,
